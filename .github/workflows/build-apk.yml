@@ -1,0 +1,63 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build & Package Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: |
+          cd android
+          chmod +x gradlew
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Rename APK for Easy Identification
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk TikTokMusic-Clean.apk
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTokMusic-Clean-APK
+          path: TikTokMusic-Clean.apk
+          retention-days: 30
+
+      - name: Create GitHub Release with APK attached
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0-${{ github.run_number }}
+          name: "TikTok Music Clean Android App v1.0.${{ github.run_number }}"
+          body: |
+            ## 📱 TikTok Music Clean - Bản cài đặt Android APK
+            
+            - Tải file `TikTokMusic-Clean.apk` bên dưới về điện thoại Android để cài đặt.
+            - Hỗ trợ Dolby Atmos, Ambient Light toàn màn hình, 100% không quảng cáo & không giỏ hàng TikTok Shop.
+          files: TikTokMusic-Clean.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

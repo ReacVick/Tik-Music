@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>TikTok Music Clean — Xem Kênh Đầy Đủ · Tự Động 16:9 & 9:16 · Ambient Blend · Dolby Atmos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#fe2c55" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+</head>
+<body class="ambient-vivid frame-blend-on">
+  <!-- LỚP ÁNH SÁNG AMBIENT TOÀN TRANG (LAN TỎA KHẮP MỤC BÊN TRÁI & TOÀN BỘ GIAO DIỆN) -->
+  <canvas id="ambientBackdropCanvas" class="ambient-backdrop-canvas" width="64" height="36"></canvas>
+
+  <!-- Nút mở menu bên trái trên màn hình nhỏ (tablet / điện thoại) -->
+  <button type="button" class="tt-mobile-menu-btn" id="btnToggleSidebar" title="Mở menu">☰</button>
+  <div class="tt-overlay-backdrop" id="overlayBackdrop"></div>
+
+  <div class="tiktok-app-layout" id="appLayout">
+    <!-- ==================== 1. CỘT TRÁI CHUẨN TIKTOK.COM ==================== -->
+    <aside class="tt-sidebar">
+      <div class="tt-logo-row">
+        <div class="tt-logo-home" id="btnLogoHome" title="Bấm để về video đầu hoặc nạp loạt video mới">
+          <div class="tt-logo-mark">♪</div>
+          <div class="tt-logo-word">
+            TikTok<span>Music</span>
+          </div>
+        </div>
+        <span class="tt-clean-pill" id="btnOpenShieldModal" title="Xem thống kê chặn quảng cáo TikTok Shop">
+          🛡️ <b id="shieldBlockedCount">0</b>
+        </span>
+      </div>
+
+      <!-- Thanh tìm kiếm hình viên thuốc nằm ngay dưới Logo -->
+      <form id="searchForm" class="tt-sidebar-search">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Tìm bài nhạc, #tag hoặc @kênh..."
+          autocomplete="off"
+        />
+        <button type="submit" class="sidebar-search-btn" title="Tìm kiếm">Tìm</button>
+      </form>
+
+      <!-- Menu chính chuẩn TikTok -->
+      <nav class="tt-nav-menu">
+        <button type="button" class="tt-nav-link active" id="navDiscover">
+          <span class="tt-nav-icon">🏠</span>
+          <span>Đề xuất (Đang phát)</span>
+        </button>
+        <button type="button" class="tt-nav-link" id="navChannelView">
+          <span class="tt-nav-icon">👤</span>
+          <span>Xem kênh đang chọn</span>
+          <span class="tt-nav-badge" id="channelCountBadge">0</span>
+        </button>
+        <button type="button" class="tt-nav-link" id="navSmartMix">
+          <span class="tt-nav-icon">🧭</span>
+          <span>Khám phá (Trộn nhạc)</span>
+        </button>
+        <button type="button" class="tt-nav-link" id="navSaved">
+          <span class="tt-nav-icon">🔖</span>
+          <span>Phần lưu nhạc</span>
+          <span class="tt-nav-badge" id="savedCountBadge">0</span>
+        </button>
+        <button type="button" class="tt-nav-link" id="navFavorites">
+          <span class="tt-nav-icon">❤️</span>
+          <span>Bài hát yêu thích</span>
+          <span class="tt-nav-badge" id="favCountBadge">0</span>
+        </button>
+        <button type="button" class="tt-nav-link" id="navHistory">
+          <span class="tt-nav-icon">🕒</span>
+          <span>Lịch sử đã nghe</span>
+        </button>
+      </nav>
+
+      <div class="tt-sidebar-divider"></div>
+
+      <!-- THẺ TAG KIẾM NHẠC ĐƠN GIẢN -->
+      <div class="tt-sidebar-section">
+        <div class="tt-section-header">
+          <span>Thẻ tag kiếm nhạc</span>
+          <button type="button" class="tt-text-btn" id="btnAddCustomTag">+ Thêm tag</button>
+        </div>
+
+        <div id="addTagBox" class="tt-add-tag-box hidden">
+          <input type="text" id="newTagInput" placeholder="Nhập tag (VD: nhactre, lofi...)" />
+          <button type="button" id="btnSaveTag">Lưu</button>
+        </div>
+
+        <div class="tt-tags-cloud" id="sidebarTagsCloud"></div>
+        <div class="tt-my-tags-row" id="myTagsList"></div>
+      </div>
+
+      <div class="tt-sidebar-divider"></div>
+
+      <!-- PHẦN LƯU NHẠC & BÀI HÁT YÊU THÍCH TRỰC TIẾP TRÊN CỘT TRÁI -->
+      <div class="tt-sidebar-section tt-library-section">
+        <div class="tt-library-tabs">
+          <button type="button" class="tt-lib-tab active" id="tabSidebarFavs">
+            ❤️ Yêu thích (<span id="libFavCount">0</span>)
+          </button>
+          <button type="button" class="tt-lib-tab" id="tabSidebarSaved">
+            🔖 Đã lưu (<span id="libSavedCount">0</span>)
+          </button>
+        </div>
+        <div class="tt-sidebar-tracks" id="sidebarLibraryList">
+          <p class="tt-empty-small">Bấm ❤️ hoặc 🔖 trên video để lưu bài hát vào đây.</p>
+        </div>
+      </div>
+
+      <div class="tt-sidebar-divider"></div>
+
+      <!-- NHẬP TÊN KÊNH TIKTOK ĐỂ XEM & TẢI HẾT VIDEO SẠCH CỦA KÊNH ĐÓ -->
+      <div class="tt-sidebar-section tt-account-mini">
+        <div class="tt-section-header">
+          <span>Xem kênh / Tài khoản TikTok</span>
+          <button type="button" class="tt-text-btn" id="btnEditAccount" title="Đổi kênh TikTok khác">⚙️</button>
+        </div>
+
+        <div id="accountDisconnected">
+          <form id="accountForm" class="tt-mini-account-form">
+            <input type="text" id="accountInput" placeholder="Nhập @tên_kênh (VD: hbiskibidi)..." autocomplete="off" />
+            <button type="submit" id="btnConnectAccount">Mở kênh</button>
+          </form>
+        </div>
+
+        <div id="accountConnected" class="tt-connected-box hidden">
+          <div class="tt-connected-row" id="sidebarProfileClickArea" title="Bấm để mở trang xem toàn bộ video của kênh này">
+            <img id="profileAvatar" src="" alt="" class="tt-connected-avatar" />
+            <div class="tt-connected-info">
+              <div id="profileNickname" class="tt-connected-name">Người dùng</div>
+              <div id="profileHandle" class="tt-connected-handle">@username</div>
+            </div>
+          </div>
+          <div class="tt-connected-stats">
+            <span><b id="profileFollowers">0</b> Flw</span>
+            <span><b id="profileLikes">0</b> Thích</span>
+            <span><b id="profileVideos">0</b> Video</span>
+          </div>
+          <div class="tt-connected-btns">
+            <button type="button" class="tt-btn-radio" id="btnLoadAccountVideos">🎬 Xem tất cả video kênh</button>
+            <button type="button" class="tt-btn-out" id="btnDisconnectAccount" title="Đổi kênh khác">Đổi</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ==================== 2. KHU VỰC GIỮA (TRÌNH PHÁT + TRANG HỒ SƠ KÊNH TIKTOK) ==================== -->
+    <main class="tt-center-main" id="mediaStage">
+      <!-- CỤM NÚT ĐIỀU KHIỂN NỔI PHÍA TRÊN -->
+      <div class="tt-floating-Controls">
+        <button type="button" class="tt-glass-pill dolby-pill active" id="btnOpenDolbyPanel" title="Bộ xử lý âm thanh vòm Dolby Atmos cho Tai nghe">
+          <span>🎧 Dolby: <strong id="dolbyTopLabel">3D Tai nghe</strong></span>
+        </button>
+
+        <button type="button" class="tt-glass-pill ambient-pill active" id="btnToggleAmbient" title="Chế độ ánh sáng Ambient (Rực rỡ / Dịu mắt / Tắt)">
+          <span>🌈 Ambient: <strong id="ambientStateLabel">Rực rỡ</strong></span>
+        </button>
+
+        <div class="tt-glass-pill select-pill" title="Lọc bỏ các video quá ngắn">
+          <span>⏱️</span>
+          <select id="minDurationSelect">
+            <option value="0">Mọi độ dài</option>
+            <option value="12" selected>&ge; 12s</option>
+            <option value="25">&ge; 25s</option>
+            <option value="60">&ge; 60s (Nhạc dài)</option>
+          </select>
+        </div>
+
+        <button type="button" class="tt-glass-pill" id="btnToggleQueueDrawer" title="Ẩn / Hiện danh sách video tiếp theo">
+          <span>📋 Tiếp theo</span>
+        </button>
+
+        <button type="button" class="tt-glass-pill fullscreen-pill" id="btnFullscreenTop" title="Phóng to toàn màn hình (Phím F)">
+          <span>⛶ Toàn màn hình</span>
+        </button>
+      </div>
+
+      <!-- BẢNG ĐIỀU KHIỂN DOLBY ATMOS BINAURAL (6 CHẾ ĐỘ KHÁC BIỆT RÕ RỆT) -->
+      <div class="dolby-popover hidden" id="dolbyPanel">
+        <div class="dolby-header">
+          <div>
+            <h4>🎧 Dolby Atmos Binaural — Chuyên Biệt Cho Tai Nghe Có Dây</h4>
+            <p>Mỗi chế độ sử dụng cấu trúc tần số, độ mở âm trường và buồng vang riêng biệt</p>
+          </div>
+          <button type="button" class="btn-close-sm" id="btnCloseDolbyPanel">✕</button>
+        </div>
+
+        <div class="dolby-live-bar">
+          <canvas id="dolbySpectrumCanvas" width="240" height="36"></canvas>
+          <button type="button" class="btn-dolby-ab active" id="btnDolbyQuickToggle">
+            🔊 Đang BẬT Dolby 3D
+          </button>
+        </div>
+
+        <div class="dolby-presets-grid">
+          <button type="button" class="dolby-preset-btn active" data-preset="atmos3d">
+            <strong>🌌 3D Tai Nghe (Atmos)</strong>
+            <span>Âm trường bung rộng 360° ra ngoài 2 củ tai</span>
+          </button>
+          <button type="button" class="dolby-preset-btn" data-preset="bass">
+            <strong>🔥 Bass Boost Sâu (Club)</strong>
+            <span>Siêu trầm 52Hz +14.5dB đập căng chắc như Subwoofer</span>
+          </button>
+          <button type="button" class="dolby-preset-btn" data-preset="vocal">
+            <strong>🎤 Vocal Studio (Ca Sĩ)</strong>
+            <span>Hạ nhạc nền trầm, đẩy giọng hát nổi sát trước mặt</span>
+          </button>
+          <button type="button" class="dolby-preset-btn" data-preset="lofi">
+            <strong>☕ Lofi Đêm Khuya (Vinyl)</strong>
+            <span>Cắt toàn bộ âm chói &gt;3.2kHz, ấm dịu kiểu băng từ</span>
+          </button>
+          <button type="button" class="dolby-preset-btn" data-preset="concert">
+            <strong>🏟️ Live Concert (Sân Khấu)</strong>
+            <span>Hiệu ứng âm thanh vòm đại nhạc hội rộng lớn</span>
+          </button>
+          <button type="button" class="dolby-preset-btn" data-preset="off">
+            <strong>⏹ Nguyên Bản (Tắt)</strong>
+            <span>Âm thanh gốc 100% không qua xử lý DSP</span>
+          </button>
+        </div>
+
+        <div class="dolby-sliders">
+          <div class="slider-row">
+            <label>🔊 Lực đập âm trầm (Sub-Bass 52Hz)</label>
+            <input type="range" id="dolbyBassSlider" min="-8" max="16" step="0.5" value="6.5" />
+            <span id="dolbyBassVal">+6.5 dB</span>
+          </div>
+          <div class="slider-row">
+            <label>✨ Độ sáng / Ấm (Treble &amp; Lofi Cut)</label>
+            <input type="range" id="dolbyTrebleSlider" min="-12" max="12" step="0.5" value="8.5" />
+            <span id="dolbyTrebleVal">+8.5 dB</span>
+          </div>
+          <div class="slider-row">
+            <label>🌐 Độ mở vòm 3D Tai nghe (Binaural Width)</label>
+            <input type="range" id="dolbyWidthSlider" min="0" max="100" step="5" value="88" />
+            <span id="dolbyWidthVal">88%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== CHẾ ĐỘ A: TRÌNH PHÁT VIDEO (TỰ ĐỘNG 9:16 HOẶC 16:9) ==================== -->
+      <div class="tt-stage-cluster" id="playerStageCluster">
+        <!-- Quầng sáng Ambient trực tiếp tỏa xung quanh khung video (NẰM DƯỚI / PHÍA SAU VIDEO, KHÔNG BAO GIỜ CHE VIDEO) -->
+        <canvas id="ambientStageCanvas" class="ambient-stage-canvas" width="64" height="64"></canvas>
+
+        <!-- Khung phát thông minh: tự động chuyển giữa 9:16 (Dọc) và 16:9 (Ngang) + Hòa vào nền Ambient -->
+        <div class="tt-phone-frame" id="ttPhoneFrame">
+          <!-- Nhãn nguồn phát góc trên -->
+          <div class="frame-top-overlay">
+            <div class="now-playing-pill" id="btnOpenChannelFromPill" title="Bấm để xem toàn bộ kênh nếu đang ở chế độ kênh">
+              <span class="pulse-dot"></span>
+              <span id="currentFeedSourceLabel">#nhacchill</span>
+            </div>
+            <div class="dolby-active-badge hidden" id="frameDolbyBadge">
+              🎧 DOLBY 3D
+            </div>
+            <button type="button" class="tt-more-btn" id="btnVideoMoreMenu" title="Tùy chọn khác">⋯</button>
+          </div>
+
+          <!-- MENU 3 CHẤM TRONG VIDEO (GIỐNG TIKTOK) -->
+          <div class="tt-more-menu hidden" id="videoMoreMenu">
+            <div class="menu-row menu-speed-row">
+              <span class="menu-row-label">⏱️ Tốc độ</span>
+              <div class="menu-speed-group" id="menuSpeedGroup">
+                <button type="button" data-speed="0.75">0.75</button>
+                <button type="button" data-speed="1" class="active">1.0</button>
+                <button type="button" data-speed="1.25">1.25</button>
+                <button type="button" data-speed="1.5">1.5</button>
+                <button type="button" data-speed="2">2.0</button>
+              </div>
+            </div>
+            <button type="button" class="menu-row" id="btnRailDolby">
+              <span class="menu-row-label">🎧 Âm thanh Dolby Atmos</span>
+              <span class="menu-row-value"><b id="menuDolbyLabel">3D Tai nghe</b> ›</span>
+            </button>
+            <button type="button" class="menu-row active" id="btnStageAutoScroll">
+              <span class="menu-row-label">📲 Cuộn tự động</span>
+              <span class="tt-switch"></span>
+            </button>
+            <button type="button" class="menu-row" id="btnToggleLoop">
+              <span class="menu-row-label">🔁 Lặp lại video</span>
+              <span class="tt-switch"></span>
+            </button>
+            <button type="button" class="menu-row" id="btnModeToggleRail">
+              <span class="menu-row-label">💿 Chế độ đĩa nhạc (chỉ nghe)</span>
+              <span class="tt-switch"></span>
+            </button>
+            <div class="menu-divider"></div>
+            <button type="button" class="menu-row" id="btnToggleAspectRatio">
+              <span class="menu-row-label">📐 Tỷ lệ khung hình</span>
+              <span class="menu-row-value"><b id="aspectRatioLabel">Tự động</b> ›</span>
+            </button>
+            <button type="button" class="menu-row active" id="btnToggleFrameBlend">
+              <span class="menu-row-label">🖼️ Video hòa vào nền</span>
+              <span class="tt-switch"></span>
+            </button>
+            <button type="button" class="menu-row" id="btnMenuAmbient">
+              <span class="menu-row-label">🌈 Ánh sáng Ambient</span>
+              <span class="menu-row-value"><b id="ambientMenuLabel">Rực rỡ</b> ›</span>
+            </button>
+            <div class="menu-divider"></div>
+            <button type="button" class="menu-row" id="btnMenuFullscreen">
+              <span class="menu-row-label">⛶ Toàn màn hình</span>
+              <span class="menu-row-value">F</span>
+            </button>
+            <a id="btnOpenOriginalTikTok" href="#" target="_blank" rel="noopener" class="menu-row">
+              <span class="menu-row-label">↗️ Mở trên TikTok gốc</span>
+            </a>
+          </div>
+
+          <!-- Xem Video -->
+          <div class="video-container" id="videoContainer">
+            <video
+              id="mainVideoPlayer"
+              playsinline
+              preload="auto"
+              crossorigin="anonymous"
+            ></video>
+
+            <div class="autoscroll-toast hidden" id="autoScrollToast">
+              <span>📲 Đang tự động cuộn sang bài tiếp theo...</span>
+            </div>
+
+            <div class="video-loading-overlay hidden" id="playerLoadingOverlay">
+              <div class="spinner"></div>
+              <span>Đang tải luồng nhạc sạch...</span>
+            </div>
+          </div>
+
+          <!-- Chế độ Đĩa than xoay -->
+          <div class="vinyl-container hidden" id="vinylContainer">
+            <div class="vinyl-disc" id="vinylDisc">
+              <img id="vinylCover" src="" alt="Cover" class="vinyl-cover" />
+              <div class="vinyl-center-hole"></div>
+            </div>
+            <div class="equalizer" id="audioEqualizer">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div class="vinyl-song-info">
+              <h3 id="vinylSongTitle">Đang tải nhạc...</h3>
+              <p id="vinylSongArtist">@creator</p>
+            </div>
+          </div>
+
+          <!-- OVERLAY THÔNG TIN BÀI NHẠC & THANH TUA Ở ĐÁY KHUNG -->
+          <div class="tt-bottom-overlay">
+            <div class="tt-author-row" id="creatorClickArea" title="Bấm để vào kênh xem toàn bộ video của kênh này">
+              <span class="tt-author-handle" id="trackAuthorName">@creator</span>
+              <span class="tt-author-views" id="trackStatsText">• 0 lượt xem</span>
+            </div>
+
+            <div class="tt-caption-wrap" id="captionWrap">
+              <p class="tt-caption" id="trackDesc">Đang tải danh sách nhạc sạch...</p>
+              <button type="button" class="tt-caption-more" id="btnCaptionMore">thêm</button>
+            </div>
+            <div class="tt-hashtags-row" id="trackHashtags"></div>
+
+            <div class="tt-music-marquee">
+              <span class="music-note-icon">🎵</span>
+              <span class="tt-music-title" id="trackMusicTitle">Đang tải bài nhạc...</span>
+            </div>
+
+            <div class="tt-player-bar">
+              <button type="button" class="tt-play-btn" id="btnPlayPause" title="Phát / Tạm dừng (Space)">▶</button>
+              <span class="tt-time" id="currentTimeText">0:00</span>
+              <input type="range" id="seekBar" class="tt-seekbar" min="0" max="100" value="0" step="0.1" />
+              <span class="tt-time" id="durationTimeText">0:00</span>
+              <span class="tt-vol-btn" id="btnMuteToggle" title="Bật/Tắt tiếng">🔊</span>
+              <input type="range" id="volumeBar" class="tt-vol-slider" min="0" max="1" step="0.05" value="0.9" />
+              <button type="button" class="tt-fs-btn" id="btnFullscreenBar" title="Toàn màn hình (Phím F)">⛶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CỘT NÚT TƯƠNG TÁC DỌC BÊN PHẢI (TIKTOK ACTION RAIL) -->
+        <div class="tt-action-rail">
+          <div class="rail-avatar-wrap" id="railCreatorBtn" title="Bấm vào Avatar để vào kênh xem toàn bộ video của kênh này!">
+            <img id="trackAuthorAvatar" src="" alt="Creator" class="rail-avatar" />
+            <span class="rail-follow-plus" title="Xem kênh">↗</span>
+          </div>
+
+          <button type="button" class="rail-btn" id="btnToggleFavorite" title="Thêm vào Bài hát yêu thích (Phím L)">
+            <div class="rail-icon-circle" id="favIcon">🤍</div>
+            <span id="railFavLabel">Yêu thích</span>
+          </button>
+
+          <button type="button" class="rail-btn" id="btnToggleSaved" title="Lưu vào Phần lưu nhạc (Phím S)">
+            <div class="rail-icon-circle" id="savedIcon">🔖</div>
+            <span id="railSavedLabel">Lưu nhạc</span>
+          </button>
+
+          <button type="button" class="rail-btn" id="btnSameMusic" title="Nghe các video dùng chung bài nhạc này">
+            <div class="rail-icon-circle">🎶</div>
+            <span>Cùng nhạc</span>
+          </button>
+
+          <div class="rail-spinning-disc" id="railSpinningDisc" title="Bấm để nghe các video cùng giai điệu">
+            <img id="railMusicCover" src="" alt="" />
+          </div>
+        </div>
+
+        <!-- MŨI TÊN LÊN / XUỐNG BÊN PHẢI -->
+        <div class="tt-nav-arrows">
+          <button type="button" class="tt-arrow-btn" id="btnScrollPrevVideo" title="Video trước (Phím ⬆)">
+            ▲
+          </button>
+          <button type="button" class="tt-arrow-btn" id="btnScrollNextVideo" title="Video tiếp theo (Phím ⬇)">
+            ▼
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== CHẾ ĐỘ B: TRANG HỒ SƠ KÊNH TIKTOK ĐẦY ĐỦ (GIỐNG ẢNH TIKTOK.COM/@HBISKIBIDI) ==================== -->
+      <div class="tt-channel-profile-view hidden" id="channelProfileView">
+        <!-- Header thông tin kênh chuẩn TikTok -->
+        <div class="channel-hero">
+          <img id="channelViewAvatar" src="" alt="Avatar" class="channel-hero-avatar" />
+          <div class="channel-hero-info">
+            <div class="channel-title-line">
+              <h2 id="channelViewNickname">Tên Kênh</h2>
+              <span id="channelViewHandle" class="channel-handle-text">@username</span>
+            </div>
+
+            <div class="channel-stats-line">
+              <span><strong id="channelViewFollowing">0</strong> Đã follow</span>
+              <span><strong id="channelViewFollowers">0</strong> Follower</span>
+              <span><strong id="channelViewLikes">0</strong> Lượt thích</span>
+              <span class="channel-clean-count">🛡️ Đã tải <strong id="channelLoadedVideosCount">0</strong> video sạch</span>
+            </div>
+
+            <div class="channel-action-buttons">
+              <button type="button" class="btn-channel-play-all" id="btnChannelPlayAll">
+                ▶ Phát tất cả video kênh
+              </button>
+              <button type="button" class="btn-channel-shuffle" id="btnChannelShuffle">
+                🎲 Phát ngẫu nhiên
+              </button>
+              <button type="button" class="btn-channel-loadmore" id="btnChannelLoadMore">
+                🔄 Quét thêm video cũ của kênh
+              </button>
+              <button type="button" class="btn-channel-back" id="btnBackToPlayer">
+                📱 Quay lại trình phát
+              </button>
+            </div>
+
+            <p class="channel-bio" id="channelViewBio"></p>
+          </div>
+        </div>
+
+        <!-- Thanh Tab & Sắp xếp chuẩn TikTok (Mới nhất / Thịnh hành / Cũ nhất) -->
+        <div class="channel-tabs-bar">
+          <div class="channel-tab-active">
+            <span>🎬 Video của kênh (100% Không Quảng Cáo · Không TikTok Shop)</span>
+          </div>
+          <div class="channel-sort-group">
+            <button type="button" class="channel-sort-btn active" data-sort="latest">Mới nhất</button>
+            <button type="button" class="channel-sort-btn" data-sort="popular">Thịnh hành</button>
+            <button type="button" class="channel-sort-btn" data-sort="oldest">Cũ nhất</button>
+          </div>
+        </div>
+
+        <!-- Lưới toàn bộ video của kênh (Bấm vào video nào phát ngay video đó!) -->
+        <div class="channel-videos-grid" id="channelVideosGrid"></div>
+      </div>
+
+      <!-- ==================== CHẾ ĐỘ C: THƯ VIỆN YÊU THÍCH / ĐÃ LƯU / LỊCH SỬ (GIỐNG TRANG HỒ SƠ TIKTOK) ==================== -->
+      <div class="tt-channel-profile-view tt-library-view hidden" id="libraryView">
+        <div class="channel-hero">
+          <img id="libraryAvatar" src="" alt="" class="channel-hero-avatar" />
+          <div class="channel-hero-info">
+            <div class="channel-title-line">
+              <h2 id="libraryTitle">Thư viện nhạc của bạn</h2>
+              <span id="libraryHandle" class="channel-handle-text">Lưu trên trình duyệt này</span>
+            </div>
+            <div class="channel-stats-line">
+              <span><strong id="libraryFavStat">0</strong> Yêu thích</span>
+              <span><strong id="librarySavedStat">0</strong> Đã lưu</span>
+              <span><strong id="libraryHistoryStat">0</strong> Đã nghe</span>
+            </div>
+            <div class="channel-action-buttons">
+              <button type="button" class="btn-channel-play-all" id="btnLibraryPlayAll">▶ Phát tất cả</button>
+              <button type="button" class="btn-channel-shuffle" id="btnLibraryShuffle">🎲 Phát ngẫu nhiên</button>
+              <button type="button" class="btn-channel-back" id="btnLibraryBack">📱 Quay lại trình phát</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="library-tabs-bar">
+          <button type="button" class="library-page-tab" data-lib-tab="favorites">❤️ Yêu thích</button>
+          <button type="button" class="library-page-tab" data-lib-tab="saved">🔖 Đã lưu</button>
+          <button type="button" class="library-page-tab" data-lib-tab="history">🕒 Đã nghe</button>
+        </div>
+        <div class="library-sub-bar">
+          <span class="library-count-chip" id="libraryCountChip">Bài đăng 0</span>
+        </div>
+
+        <div class="channel-videos-grid" id="libraryGrid"></div>
+      </div>
+    </main>
+
+    <!-- ==================== 3. CỘT PHẢI: DANH SÁCH VIDEO NHẠC TIẾP THEO ==================== -->
+    <aside class="tt-queue-drawer" id="queueDrawer">
+      <div class="upnext-header">
+        <div class="upnext-title-row">
+          <div>
+            <h3 id="queueTitle">Danh sách phát tiếp theo</h3>
+            <p class="upnext-subtitle" id="queueSubtitle">Đang tải danh sách nhạc sạch...</p>
+          </div>
+          <span class="upnext-counter" id="queueProgressCounter">0 / 0</span>
+        </div>
+
+        <div class="upnext-actions-row">
+          <button type="button" class="upnext-btn-secondary" id="btnLoadMoreMix" title="Nối thêm bài mới vào cuối danh sách">
+            ➕ Thêm bài
+          </button>
+          <button type="button" class="upnext-btn-primary" id="btnRefreshFeed" title="Đổi sang loạt video mới hoàn toàn">
+            🎲 Đổi loạt mới
+          </button>
+        </div>
+
+        <div class="upnext-clean-bar">
+          <span>🟢 Sạch: <b id="statPassedCount">0</b> bài</span>
+          <span>🛡️ Đã chặn: <b id="statBlockedCount">0</b> (Shop: <span id="statShopCount">0</span> · Ads: <span id="statAdsCount">0</span> · Khác: <span id="statSpamCount">0</span>)</span>
+        </div>
+      </div>
+
+      <div class="upnext-list" id="videoQueueList"></div>
+    </aside>
+  </div>
+
+  <!-- MODAL CHI TIẾT BỘ LỌC CHỐNG TIKTOK SHOP & ADS -->
+  <div class="modal-backdrop hidden" id="shieldModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>🛡️ Báo Cáo Bộ Lọc Sạch (Clean Music Shield)</h3>
+        <button type="button" class="btn-close-modal" id="btnCloseShieldModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Hệ thống tự động chặn đứng mọi video gắn giỏ hàng TikTok Shop, Quảng cáo tài trợ, Livestream và giữ lại 100% video sạch:
+        </p>
+        <div class="shield-metrics-grid">
+          <div class="metric-card">
+            <span class="metric-num" id="modalTotalScanned">0</span>
+            <span class="metric-label">Tổng video đã quét</span>
+          </div>
+          <div class="metric-card metric-clean">
+            <span class="metric-num" id="modalTotalPassed">0</span>
+            <span class="metric-label">Video nhạc sạch</span>
+          </div>
+          <div class="metric-card metric-shop">
+            <span class="metric-num" id="modalBlockedShop">0</span>
+            <span class="metric-label">Giỏ hàng TikTok Shop</span>
+          </div>
+          <div class="metric-card metric-ads">
+            <span class="metric-num" id="modalBlockedAds">0</span>
+            <span class="metric-label">Quảng cáo / Tài trợ</span>
+          </div>
+          <div class="metric-card metric-spam">
+            <span class="metric-num" id="modalBlockedSpam">0</span>
+            <span class="metric-label">Caption bán hàng / Link bio</span>
+          </div>
+          <div class="metric-card metric-short">
+            <span class="metric-num" id="modalBlockedShort">0</span>
+            <span class="metric-label">Video quá ngắn / Khác</span>
+          </div>
+        </div>
+
+        <h4 class="blocked-list-title">Danh sách các video vừa bị chặn trong phiên này:</h4>
+        <div class="blocked-examples-list" id="blockedExamplesList">
+          <p class="empty-hint">Chưa có video nào bị chặn trong lần quét này.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

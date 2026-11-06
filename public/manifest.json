@@ -1,0 +1,22 @@
+{
+  "name": "TikTok Music Clean",
+  "short_name": "TikTokMusic",
+  "description": "Ứng dụng nghe nhạc TikTok sạch 100% không quảng cáo, TikTok Shop, hỗ trợ Dolby Atmos và Ambient Light",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07080d",
+  "theme_color": "#fe2c55",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2307080d'/><circle cx='50' cy='50' r='38' fill='%2312141e'/><path d='M52 28v30a12 12 0 1 1-10-11.8v-8.2h20v-10h-10z' fill='%23fe2c55'/><path d='M54 26v30a12 12 0 1 1-10-11.8v-8.2h20v-10h-10z' fill='%2325f4ee' opacity='0.75'/></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2307080d'/><circle cx='50' cy='50' r='38' fill='%2312141e'/><path d='M52 28v30a12 12 0 1 1-10-11.8v-8.2h20v-10h-10z' fill='%23fe2c55'/><path d='M54 26v30a12 12 0 1 1-10-11.8v-8.2h20v-10h-10z' fill='%2325f4ee' opacity='0.75'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
