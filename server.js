@@ -33,11 +33,16 @@ const ipv4Agent = new https.Agent({
 // 1. BROWSER ENGINE (Headless Chrome/Edge - Warm Tab Pool & Deep Pagination)
 // ============================================================================
 const BROWSER_PATHS = [
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
-];
+].filter(Boolean);
 
 function getBrowserExecutablePath() {
   for (const p of BROWSER_PATHS) {
