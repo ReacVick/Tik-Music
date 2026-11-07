@@ -2082,17 +2082,26 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
         exclude: forceRefresh ? getSeenIdsParam(120) : '',
       });
 
-      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(6000) });
+      if (forceRefresh) showMiniToast('🎲 Đang cào loạt video mới từ TikTok...');
+      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(forceRefresh ? 30000 : 9000) });
       if (res.ok) {
         data = await res.json();
+        if (forceRefresh && data.mode === 'fresh') {
+          showMiniToast(`✅ ${data.freshCount || 0} video mới vừa cào từ TikTok`);
+        }
       }
     } catch (apiErr) {
-      console.warn('Backend chậm hoặc không phản hồi, tự động dùng TikWM Cloud Engine:', apiErr.message);
+      console.warn('Backend chậm hoặc không phản hồi, dùng kho dự phòng:', apiErr.message);
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
-      const matched = filterCatalog(catalog, cleanTag);
+      let matched = filterCatalog(catalog, cleanTag);
+      if (forceRefresh) {
+        const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
+        matched = (unseen.length >= 8 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
+        showMiniToast('⚠️ Server đang bận, tạm dùng kho dự phòng');
+      }
       if (matched.length > 0) {
         data = {
           tag: cleanTag,

@@ -1934,6 +1934,90 @@ app.get('/api/trending-sounds', async (req, res) => {
   }
 });
 
+// ============================================================================
+// KHO VIDEO TƯƠI (FRESH POOL): Cào liên tục từ TikTok Mobile Feed, dùng cho "Đổi loạt mới"
+// ============================================================================
+const freshPool = { items: [], updatedAt: 0, filling: false };
+
+async function refillFreshPool(rounds = 6) {
+  if (freshPool.filling) return;
+  freshPool.filling = true;
+  try {
+    const batches = await Promise.all(Array.from({ length: rounds }, () => fetchMobileFeedItems(1)));
+    const raw = batches.flat();
+    const { videos } = filterAndNormalizeItems(raw, latestCookieHeader, { minDuration: 0, excludeIds: [] });
+    const ids = new Set(freshPool.items.map(v => v.id));
+    let added = 0;
+    for (const v of videos) {
+      if (v && v.id && !ids.has(v.id)) {
+        freshPool.items.push(v);
+        ids.add(v.id);
+        added++;
+      }
+    }
+    if (freshPool.items.length > 500) freshPool.items = freshPool.items.slice(-500);
+    freshPool.updatedAt = Date.now();
+    console.log(`[FreshPool] +${added} video mới (tổng ${freshPool.items.length})`);
+  } catch (e) {
+    console.warn('[FreshPool] Lỗi nạp:', e.message);
+  } finally {
+    freshPool.filling = false;
+  }
+}
+
+function shuffleList(list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+async function getFreshBatch(minDuration, excludeIds, count = 30) {
+  const exclude = new Set((excludeIds || []).map(String));
+  const pick = () =>
+    freshPool.items.filter(v => !exclude.has(String(v.id)) && Number(v.duration || v.video?.duration || 0) >= minDuration);
+
+  let fresh = pick();
+  if (fresh.length < 12) {
+    await refillFreshPool(8);
+    fresh = pick();
+  }
+  fresh = shuffleList(fresh).slice(0, count);
+  fresh.forEach(v => exclude.add(String(v.id)));
+
+  let seed = [];
+  if (fresh.length < count) {
+    try {
+      const p = path.join(__dirname, 'feed_data.json');
+      if (fs.existsSync(p)) seed = JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (_) {}
+    seed = shuffleList(
+      seed.filter(v => v && v.id && !exclude.has(String(v.id)) && Number(v.duration || 0) >= minDuration)
+    ).slice(0, count - fresh.length);
+    seed.forEach(v => {
+      if (!mediaRegistry.has(v.id)) {
+        mediaRegistry.set(v.id, {
+          id: v.id,
+          videoUrl: v.streamVideoUrl,
+          audioUrl: v.streamAudioUrl || v.streamVideoUrl,
+          coverUrl: v.cover,
+          cookieHeader: '',
+          updatedAt: Date.now()
+        });
+      }
+    });
+  }
+
+  // Nạp thêm ngầm cho lần bấm sau
+  refillFreshPool(4);
+  return { fresh, seed };
+}
+
+setInterval(() => refillFreshPool(4), 3 * 60 * 1000);
+setTimeout(() => refillFreshPool(6), 5000);
+
 app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
   try {
     const tag = req.query.tag || 'nhacchill';
@@ -1941,6 +2025,23 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
     const strictAnchors = req.query.strictAnchors === 'true';
     const forceRefresh = req.query.refresh === 'true';
     const excludeIds = req.query.exclude ? String(req.query.exclude).split(',').filter(Boolean) : [];
+
+    // "Đổi loạt mới": trả ngay video tươi vừa cào từ TikTok (không trùng bài đã xem)
+    if (forceRefresh && tag !== 'smartmix') {
+      const { fresh, seed } = await getFreshBatch(minDuration, excludeIds, 30);
+      const videos = [...fresh, ...seed];
+      const stats = {
+        totalScanned: videos.length,
+        passed: videos.length,
+        freshCount: fresh.length,
+        seedCount: seed.length,
+        blockedTotal: 0,
+        blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+        blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+        blockedExamples: []
+      };
+      return res.json({ tag, mode: 'fresh', freshCount: fresh.length, videos, filterStats: stats, stats });
+    }
 
     if (tag === 'smartmix') {
       const userTags = req.query.tags ? String(req.query.tags).split(',').filter(Boolean) : [];
