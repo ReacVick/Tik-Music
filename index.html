@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20261107v4" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#fe2c55" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -263,7 +263,10 @@
             <div class="dolby-active-badge hidden" id="frameDolbyBadge">
               🎧 DOLBY 3D
             </div>
-            <button type="button" class="tt-more-btn" id="btnVideoMoreMenu" title="Tùy chọn khác">⋯</button>
+            <div class="frame-top-right-actions">
+              <button type="button" class="tt-top-queue-icon-btn" id="btnTopQueueMobile" title="Danh sách phát tiếp theo">📋</button>
+              <button type="button" class="tt-more-btn" id="btnVideoMoreMenu" title="Tùy chọn khác">⋯</button>
+            </div>
           </div>
 
           <!-- MENU 3 CHẤM TRONG VIDEO (GIỐNG TIKTOK) -->
@@ -387,6 +390,75 @@
               <span class="tt-vol-btn" id="btnMuteToggle" title="Bật/Tắt tiếng">🔊</span>
               <input type="range" id="volumeBar" class="tt-vol-slider" min="0" max="1" step="0.05" value="0.9" />
               <button type="button" class="tt-fs-btn" id="btnFullscreenBar" title="Toàn màn hình (Phím F)">⛶</button>
+            </div>
+          </div>
+
+          <!-- GIAO DIỆN PHÓNG TO XOAY NGANG 16:9 CHUẨN TIKTOK (HIỆN KHI PHÓNG TO NGANG) -->
+          <div class="tt-landscape-hud" id="landscapeHud">
+            <div class="ls-hud-top">
+              <div class="ls-top-row">
+                <button type="button" class="ls-back-btn" id="btnLsBack" title="Thu nhỏ về màn hình dọc">‹</button>
+                <div class="ls-title-wrap" id="lsTitleWrap">
+                  <span class="ls-title-text" id="lsTrackTitle">Đang tải...</span>
+                  <button type="button" class="ls-title-more" id="btnLsTitleMore">thêm</button>
+                </div>
+                <button type="button" class="ls-more-btn" id="btnLsMore" title="Tùy chọn khác">⋮</button>
+              </div>
+              <div class="ls-creator-pill" id="lsCreatorPill" title="Bấm để mở kênh của tác giả">
+                <img id="lsAuthorAvatar" src="" alt="" class="ls-creator-avatar" />
+                <span id="lsAuthorName" class="ls-creator-name">Creator</span>
+                <span class="ls-creator-plus">+</span>
+              </div>
+            </div>
+
+            <button type="button" class="ls-center-play-btn" id="btnLsCenterPlay" title="Phát / Tạm dừng">
+              ⏸
+            </button>
+
+            <div class="ls-hud-bottom">
+              <div class="ls-time-row">
+                <span class="ls-time-current" id="lsCurrentTime">00:00</span>
+                <span class="ls-time-sep">/</span>
+                <span class="ls-time-duration" id="lsDurationTime">00:00</span>
+              </div>
+
+              <input type="range" id="lsSeekBar" class="ls-seekbar" min="0" max="100" value="0" step="0.1" />
+
+              <div class="ls-actions-row">
+                <div class="ls-actions-left">
+                  <button type="button" class="ls-action-btn" id="btnLsFavorite" title="Thêm vào Bài hát yêu thích">
+                    <span class="ls-act-icon" id="lsFavIcon">🤍</span>
+                    <span id="lsFavText">Yêu thích</span>
+                  </button>
+                  <button type="button" class="ls-action-btn" id="btnLsSaved" title="Lưu vào Phần lưu nhạc">
+                    <span class="ls-act-icon" id="lsSavedIcon">🔖</span>
+                    <span id="lsSavedText">Lưu nhạc</span>
+                  </button>
+                  <button type="button" class="ls-action-btn" id="btnLsSameMusic" title="Nghe các video cùng bài nhạc">
+                    <span class="ls-act-icon">🎶</span>
+                    <span>Cùng nhạc</span>
+                  </button>
+                  <button type="button" class="ls-action-btn" id="btnLsRefresh" title="Đổi loạt video mới">
+                    <span class="ls-act-icon">🎲</span>
+                    <span>Đổi loạt</span>
+                  </button>
+                </div>
+
+                <div class="ls-actions-right">
+                  <button type="button" class="ls-badge-btn" id="btnLsDolby" title="Mở bộ xử lý âm thanh Dolby 3D">
+                    🎧 Dolby
+                  </button>
+                  <button type="button" class="ls-badge-btn" id="btnLsQueue" title="Danh sách phát tiếp theo">
+                    📋 Tiếp theo
+                  </button>
+                  <button type="button" class="ls-speed-btn" id="btnLsSpeed" title="Đổi tốc độ phát">
+                    1x
+                  </button>
+                  <button type="button" class="ls-exit-btn" id="btnLsExit" title="Thu nhỏ về màn hình dọc">
+                    🗗
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -593,7 +665,7 @@
     </div>
   </div>
 
-  <script src="catalog_bundle.js"></script>
-  <script src="app.js"></script>
+  <script src="catalog_bundle.js?v=20261107v4"></script>
+  <script src="app.js?v=20261107v4"></script>
 </body>
 </html>

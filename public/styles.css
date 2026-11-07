@@ -2771,11 +2771,9 @@ body.queue-overlay-open .tt-overlay-backdrop {
     transform: translateX(0);
   }
 
-  .tt-floating-Controls {
-    display: none !important;
-  }
-
-  .tt-nav-arrows {
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  #frameDolbyBadge {
     display: none !important;
   }
 

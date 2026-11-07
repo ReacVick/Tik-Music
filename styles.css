@@ -2191,10 +2191,41 @@ body.is-playing:not(.topbar-reveal) .tt-floating-Controls > * {
   color: #fff;
 }
 
-/* ---------- Nút 3 chấm & menu trong video (giống TikTok) ---------- */
-.tt-more-btn {
+/* ---------- Nút 3 chấm & nút danh sách phát góc trên (giống TikTok) ---------- */
+.frame-top-right-actions {
   pointer-events: auto;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-top-queue-icon-btn {
+  display: none;
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.tt-top-queue-icon-btn:hover,
+.tt-top-queue-icon-btn:active {
+  background: rgba(254, 44, 85, 0.75);
+  transform: scale(0.95);
+}
+
+.tt-more-btn {
+  pointer-events: auto;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -2740,8 +2771,14 @@ body.queue-overlay-open .tt-overlay-backdrop {
     transform: translateX(0);
   }
 
-  .tt-floating-Controls {
-    left: 58px;
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  #frameDolbyBadge {
+    display: none !important;
+  }
+
+  .tt-top-queue-icon-btn {
+    display: inline-flex !important;
   }
 
   .dolby-popover {
@@ -2770,6 +2807,16 @@ body.queue-overlay-open .tt-overlay-backdrop {
 @media (max-width: 600px) {
   .tt-center-main {
     padding: 0 !important;
+  }
+
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  #frameDolbyBadge {
+    display: none !important;
+  }
+
+  .tt-top-queue-icon-btn {
+    display: inline-flex !important;
   }
 
   .tt-stage-cluster,
@@ -2857,31 +2904,6 @@ body.queue-overlay-open .tt-overlay-backdrop {
     font-size: 16px;
   }
 
-  .tt-nav-arrows {
-    display: flex;
-    position: absolute;
-    right: 10px;
-    top: 34%;
-    transform: translateY(-50%);
-    z-index: 25;
-    flex-direction: column;
-    gap: 8px;
-    opacity: 0.78;
-    transition: opacity 0.2s;
-  }
-
-  .tt-nav-arrows .tt-arrow-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 12px;
-    background: rgba(14, 14, 22, 0.65);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  }
-
   .tt-bottom-overlay {
     padding: 20px 58px calc(10px + env(safe-area-inset-bottom)) 12px;
   }
@@ -2893,21 +2915,30 @@ body.queue-overlay-open .tt-overlay-backdrop {
 
   .frame-top-overlay {
     top: 10px;
-    left: 54px;
+    left: 56px;
     right: 10px;
+    gap: 6px;
   }
 
-  .tt-floating-Controls {
-    top: 50px;
-    right: 8px;
-    left: 8px;
-    justify-content: center;
-    gap: 5px;
+  .now-playing-pill {
+    max-width: calc(100vw - 154px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.95 !important;
+    padding: 5px 11px;
+    font-size: 12px;
   }
 
-  .tt-glass-pill {
-    font-size: 10.5px;
-    padding: 4px 8px;
+  .now-playing-pill #currentFeedSourceLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-playing .tt-phone-frame:not(:hover) .tt-top-queue-icon-btn,
+  body.is-playing .tt-phone-frame:not(:hover) .tt-more-btn {
+    opacity: 0.88;
   }
 
   .channel-videos-grid {
@@ -2943,14 +2974,347 @@ body.queue-overlay-open .tt-overlay-backdrop {
   }
 }
 
-/* Chế độ xoay ngang toàn màn hình cho video 16:9 trên điện thoại */
+/* =====================================================================
+   GIAO DIỆN PHÓNG TO XOAY NGANG 16:9 CHUẨN TIKTOK (NHƯ ẢNH MẪU TIKTOK)
+   ===================================================================== */
+.tt-landscape-hud {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.68) 0%,
+    rgba(0, 0, 0, 0.18) 22%,
+    transparent 35%,
+    transparent 62%,
+    rgba(0, 0, 0, 0.25) 76%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.24s ease;
+}
+
+.tt-landscape-hud.hud-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.tt-landscape-hud.hud-hidden * {
+  pointer-events: none !important;
+}
+
+.ls-hud-top {
+  padding: 14px max(22px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ls-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.ls-back-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 0.9;
+  padding: 0 6px 4px 0;
+  cursor: pointer;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+.ls-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ls-title-text {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.ls-title-wrap.expanded .ls-title-text {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.ls-title-more {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.ls-more-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 2px 6px;
+  cursor: pointer;
+  margin-left: auto;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+.ls-creator-pill {
+  align-self: flex-start;
+  margin-left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(22, 22, 28, 0.62);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 4px 6px 4px 5px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ls-creator-pill:hover {
+  background: rgba(35, 35, 45, 0.82);
+}
+
+.ls-creator-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.ls-creator-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-creator-plus {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fe2c55;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ls-center-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.ls-center-play-btn:active {
+  transform: translate(-50%, -50%) scale(0.92);
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.ls-hud-bottom {
+  padding: 0 max(22px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.ls-time-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.ls-time-sep,
+.ls-time-duration {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ls-seekbar {
+  width: 100%;
+  height: 4px;
+  accent-color: #fff;
+  cursor: pointer;
+  margin: 2px 0 5px;
+}
+
+.ls-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ls-actions-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ls-actions-left,
+.ls-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.ls-action-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: transform 0.15s, color 0.15s;
+}
+
+.ls-action-btn:active {
+  transform: scale(0.94);
+}
+
+.ls-action-btn.active {
+  color: #fe2c55;
+}
+
+.ls-act-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.ls-badge-btn {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ls-badge-btn:hover,
+.ls-badge-btn.active {
+  background: rgba(254, 44, 85, 0.7);
+  border-color: rgba(254, 44, 85, 0.9);
+}
+
+.ls-speed-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.ls-exit-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Chế độ xoay ngang toàn màn hình cho video 16:9: Ẩn toàn bộ UI dọc & nền vàng Ambient, bật HUD chuẩn TikTok */
 body.landscape-fullscreen-active .tt-floating-Controls,
 body.landscape-fullscreen-active .tt-mobile-menu-btn,
-body.landscape-fullscreen-active .tt-nav-arrows {
+body.landscape-fullscreen-active .tt-nav-arrows,
+body.landscape-fullscreen-active .frame-top-overlay,
+body.landscape-fullscreen-active .tt-bottom-overlay,
+body.landscape-fullscreen-active .tt-action-rail,
+body.landscape-fullscreen-active .tt-landscape-fs-btn,
+body.landscape-fullscreen-active .ambient-backdrop-canvas,
+body.landscape-fullscreen-active .ambient-stage-canvas {
   display: none !important;
 }
 
-body.landscape-fullscreen-active .tt-center-main,
+body.landscape-fullscreen-active {
+  background: #000 !important;
+}
+
+body.landscape-fullscreen-active .tt-center-main {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 70 !important;
+  background: #000 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.landscape-fullscreen-active .tt-stage-cluster::before {
+  display: none !important;
+}
+
 body.landscape-fullscreen-active .tt-stage-cluster,
 body.landscape-fullscreen-active .tt-phone-frame,
 body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 {
@@ -2961,26 +3325,46 @@ body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 {
   padding: 0 !important;
   margin: 0 !important;
   border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
   aspect-ratio: auto !important;
+  background: #000 !important;
 }
 
-body.landscape-fullscreen-active .video-container video {
+body.landscape-fullscreen-active .video-container,
+body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 .video-container {
   width: 100vw !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
+  background: #000 !important;
+}
+
+body.landscape-fullscreen-active .video-container video,
+body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 .video-container video {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  aspect-ratio: auto !important;
   object-fit: contain !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
-body.landscape-fullscreen-active .tt-landscape-fs-btn {
-  top: 12px !important;
-  right: 56px !important;
-  left: auto !important;
-  bottom: auto !important;
+body.landscape-fullscreen-active .tt-landscape-hud {
+  display: flex !important;
 }
 
-/* Màn hình thấp (điện thoại xoay ngang 16:9) */
+/* Màn hình thấp (khi điện thoại xoay ngang tự nhiên với video 16:9) */
 @media (max-height: 560px) {
-  .tt-floating-Controls {
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  .tt-mobile-menu-btn,
+  .frame-top-overlay,
+  .tt-bottom-overlay,
+  .tt-action-rail,
+  .tt-landscape-fs-btn,
+  .ambient-backdrop-canvas,
+  .ambient-stage-canvas {
     display: none !important;
   }
   .tt-phone-frame,
@@ -2990,35 +3374,17 @@ body.landscape-fullscreen-active .tt-landscape-fs-btn {
     max-width: 100vw !important;
     max-height: 100dvh !important;
     border-radius: 0 !important;
+    background: #000 !important;
   }
   .tt-phone-frame.is-landscape-16-9 .video-container video {
     width: 100vw !important;
     height: 100dvh !important;
     max-height: 100dvh !important;
     object-fit: contain !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
   }
-  .tt-action-rail {
-    position: absolute !important;
-    right: 10px !important;
-    bottom: 58px !important;
-    gap: 6px !important;
-    z-index: 20;
-  }
-  .rail-icon-circle {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  .rail-btn span,
-  .rail-spinning-disc {
-    display: none !important;
-  }
-  .tt-bottom-overlay {
-    padding: 8px 54px 8px 14px !important;
-  }
-  .tt-caption-wrap,
-  .tt-hashtags-row,
-  .tt-music-marquee {
-    display: none !important;
+  .tt-landscape-hud {
+    display: flex !important;
   }
 }
