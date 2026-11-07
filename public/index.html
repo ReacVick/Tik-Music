@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#fe2c55" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -34,6 +34,7 @@
         <span class="tt-clean-pill" id="btnOpenShieldModal" title="Xem thống kê chặn quảng cáo TikTok Shop">
           🛡️ <b id="shieldBlockedCount">0</b>
         </span>
+        <button type="button" class="tt-sidebar-close-btn" id="btnCloseSidebarMobile" title="Đóng menu">✕</button>
       </div>
 
       <!-- Thanh tìm kiếm hình viên thuốc nằm ngay dưới Logo -->
@@ -44,8 +45,9 @@
           id="searchInput"
           placeholder="Tìm bài nhạc, #tag hoặc @kênh..."
           autocomplete="off"
+          enterkeyhint="search"
         />
-        <button type="submit" class="sidebar-search-btn" title="Tìm kiếm">Tìm</button>
+        <button type="submit" class="sidebar-search-btn" id="btnSubmitSearch" title="Tìm kiếm">Tìm</button>
       </form>
 
       <!-- Menu chính chuẩn TikTok -->
@@ -581,6 +583,7 @@
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="catalog_bundle.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

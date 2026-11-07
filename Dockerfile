@@ -46,17 +46,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# Cấu hình user UID 1000 tương thích tiêu chuẩn Hugging Face Spaces & bảo mật Linux
+RUN useradd -m -u 1000 user
+USER user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-ENV PORT=3000
+WORKDIR $HOME/app
 
-COPY package*.json ./
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
+    PORT=7860
+
+COPY --chown=user package*.json ./
 RUN npm install --omit=dev
 
-COPY . .
+COPY --chown=user . .
 
-EXPOSE 3000
+EXPOSE 7860
 
 CMD ["node", "server.js"]

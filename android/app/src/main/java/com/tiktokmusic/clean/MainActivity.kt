@@ -22,9 +22,9 @@ class MainActivity : AppCompatActivity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var fullscreenContainer: FrameLayout
 
-    // URL ứng dụng: Có thể thay thế bằng link Vercel sau khi bạn triển khai
-    // Mặc định hỗ trợ cả link Vercel lẫn IP mạng nội bộ của bạn
-    private val DEFAULT_URL = "https://tiktok-music-clean.vercel.app"
+    // URL ứng dụng: Ưu tiên nạp bản Online Live 24/7 trên Render, tự động fallback về bộ nhớ App nội bộ nếu không có mạng
+    private val ONLINE_URL = "https://tik-music.onrender.com"
+    private val OFFLINE_URL = "file:///android_asset/index.html"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,8 +69,8 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Tải trang web
-        webView.loadUrl(DEFAULT_URL)
+        // Tải trang web online từ Render, fallback về offline nếu mất mạng
+        webView.loadUrl(ONLINE_URL)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -84,17 +84,30 @@ class MainActivity : AppCompatActivity() {
         settings.useWideViewPort = true
         settings.allowFileAccess = true
         settings.allowContentAccess = true
+        settings.allowFileAccessFromFileURLs = true
+        settings.allowUniversalAccessFromFileURLs = true
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_DEFAULT
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                if (url.startsWith("http://") || url.startsWith("https://")) {
+                if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:///")) {
                     view?.loadUrl(url)
                     return true
                 }
                 return false
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    view?.loadUrl(OFFLINE_URL)
+                }
             }
         }
 

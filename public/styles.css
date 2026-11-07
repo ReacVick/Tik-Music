@@ -244,6 +244,33 @@ body.ambient-switching .ambient-stage-canvas {
   background: rgba(16, 185, 129, 0.25);
 }
 
+.tt-sidebar-close-btn {
+  display: none;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.tt-sidebar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+@media (max-width: 900px) {
+  .tt-sidebar-close-btn {
+    display: flex;
+  }
+}
+
 .tt-sidebar-search {
   display: flex;
   align-items: center;
@@ -2731,7 +2758,28 @@ body.queue-overlay-open .tt-overlay-backdrop {
   }
 
   .tt-nav-arrows {
-    display: none;
+    display: flex;
+    position: absolute;
+    right: 12px;
+    top: 36%;
+    transform: translateY(-50%);
+    z-index: 25;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+  }
+
+  .tt-nav-arrows .tt-arrow-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+    background: rgba(14, 14, 22, 0.65);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
 
   .tt-bottom-overlay {

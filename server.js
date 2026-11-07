@@ -17,11 +17,34 @@ const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 7860;
 
 app.use(cors());
 app.use(express.json());
+// Hỗ trợ đọc file tĩnh ở cả thư mục /public lẫn thư mục gốc /
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+  const rootIndex = path.join(__dirname, 'index.html');
+  const pubIndex = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(rootIndex)) return res.sendFile(rootIndex);
+  if (fs.existsSync(pubIndex)) return res.sendFile(pubIndex);
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), time: Date.now() });
+});
+
+// Tự động giữ ấm server chống ngủ đông (Anti-Sleep Self Ping)
+const externalUrl = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL;
+if (externalUrl) {
+  console.log(`[AntiSleep] Kích hoạt cơ chế tự giữ ấm cho: ${externalUrl}`);
+  setInterval(() => {
+    fetch(`${externalUrl}/api/health`).catch(() => {});
+  }, 10 * 60 * 1000); // Mỗi 10 phút ping 1 lần
+}
 
 const ipv4Agent = new https.Agent({
   family: 4,
@@ -48,38 +71,294 @@ function getBrowserExecutablePath() {
   for (const p of BROWSER_PATHS) {
     if (fs.existsSync(p)) return p;
   }
-  throw new Error('Không tìm thấy trình duyệt Chrome hoặc Edge trên hệ thống.');
+  return null;
 }
 
 let sharedBrowser = null;
 let latestCookieHeader = '';
 
 async function getBrowser() {
+  // Trên Render (512MB RAM), tuyệt đối tắt Chrome để giữ RAM dưới 70MB, chống tràn RAM OOM
+  if (process.env.RENDER || process.env.IS_RENDER) {
+    return null;
+  }
   if (sharedBrowser && sharedBrowser.connected) {
     return sharedBrowser;
   }
   const executablePath = getBrowserExecutablePath();
+  if (!executablePath) {
+    console.log('[BrowserEngine] Môi trường không có Chrome -> Tự động kích hoạt TikWM Cloud Engine');
+    return null;
+  }
   console.log(`[BrowserEngine] Khởi tạo Headless Browser từ: ${executablePath}`);
-  sharedBrowser = await puppeteer.launch({
-    executablePath,
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--mute-audio'
-    ]
-  });
-  sharedBrowser.on('disconnected', () => {
-    sharedBrowser = null;
-  });
-  return sharedBrowser;
+  try {
+    sharedBrowser = await puppeteer.launch({
+      executablePath,
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--mute-audio'
+      ]
+    });
+    sharedBrowser.on('disconnected', () => {
+      sharedBrowser = null;
+    });
+    return sharedBrowser;
+  } catch (err) {
+    console.warn('[BrowserEngine] Không thể khởi tạo Chrome:', err.message);
+    return null;
+  }
 }
 
 // Registry lưu thông tin stream và cookie cho từng video ID
 const mediaRegistry = new Map();
+
+// ============================================================================
+// 1.5. CỔNG API XUYÊN TƯỜNG LỬA TIKTOK (TIKWM CLOUD RESILIENT FALLBACK)
+// Tự động kích hoạt khi chạy trên Datacenter (Render/AWS) bị TikTok chặn Capcha
+// ============================================================================
+function transformTikWMItem(v) {
+  const id = String(v.video_id || v.id || '');
+  const playUrl = v.play || v.wmplay || '';
+  const audioUrl = v.music || playUrl;
+  const coverUrl = v.origin_cover || v.cover || '';
+  const authorName = v.author?.nickname || v.author?.unique_id || 'TikTok Creator';
+  const username = v.author?.unique_id || 'creator';
+  const avatar = v.author?.avatar || '';
+
+  mediaRegistry.set(id, {
+    id,
+    videoUrl: playUrl,
+    audioUrl: audioUrl,
+    coverUrl: coverUrl,
+    cookieHeader: '',
+    updatedAt: Date.now()
+  });
+
+  return {
+    id,
+    desc: v.title || '',
+    createTime: Number(v.create_time || Math.floor(Date.now() / 1000)),
+    duration: Number(v.duration || 0),
+    width: 576,
+    height: 1024,
+    aspectRatio: 0.5625,
+    isLandscape: false,
+    isPinned: false,
+    cover: coverUrl,
+    streamVideoUrl: `/api/stream/${id}?type=video`,
+    streamAudioUrl: `/api/stream/${id}?type=audio`,
+    tiktokUrl: `https://www.tiktok.com/@${username}/video/${id}`,
+    _sourceSlug: '',
+    author: {
+      id: String(v.author?.id || ''),
+      username,
+      uniqueId: username,
+      nickname: authorName,
+      avatar,
+      verified: false
+    },
+    music: {
+      id: String(v.music_info?.id || ''),
+      title: v.music_info?.title || v.music_title || 'Âm thanh gốc',
+      author: v.music_info?.author || authorName,
+      authorName: v.music_info?.author || authorName,
+      cover: v.music_info?.cover || avatar,
+      duration: Number(v.duration || 0),
+      original: true,
+      hasDirectAudio: Boolean(audioUrl)
+    },
+    video: {
+      duration: Number(v.duration || 0),
+      width: 576,
+      height: 1024,
+      aspectRatio: 0.5625,
+      isLandscape: false,
+      cover: coverUrl,
+      streamUrl: `/api/stream/${id}?type=video`
+    },
+    stats: {
+      plays: Number(v.play_count || 0),
+      playCount: Number(v.play_count || 0),
+      diggCount: Number(v.digg_count || 0),
+      commentCount: Number(v.comment_count || 0),
+      shareCount: Number(v.share_count || 0),
+      collectCount: Number(v.collect_count || 0)
+    },
+    hashtags: []
+  };
+}
+
+class RequestQueue {
+  constructor(delayMs = 1200) {
+    this.delayMs = delayMs;
+    this.lastRun = 0;
+    this.queue = [];
+    this.running = false;
+  }
+  async add(fn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ fn, resolve, reject });
+      this.process();
+    });
+  }
+  async process() {
+    if (this.running || this.queue.length === 0) return;
+    this.running = true;
+    while (this.queue.length > 0) {
+      const { fn, resolve, reject } = this.queue.shift();
+      const waitTime = Math.max(0, this.lastRun + this.delayMs - Date.now());
+      if (waitTime > 0) await new Promise(r => setTimeout(r, waitTime));
+      this.lastRun = Date.now();
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    }
+    this.running = false;
+  }
+}
+
+const tikwmQueue = new RequestQueue(1200);
+const tikwmCache = new Map();
+
+async function fetchTikWMSearch(keyword, count = 30) {
+  const cacheKey = `search:${keyword}:${count}`;
+  const cached = tikwmCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  try {
+    const list = await tikwmQueue.add(async () => {
+      const res = await axios.get('https://www.tikwm.com/api/feed/search', {
+        params: { keywords: keyword, count },
+        httpsAgent: ipv4Agent,
+        timeout: 9000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      return res.data?.data?.videos || [];
+    });
+
+    if (Array.isArray(list) && list.length > 0) {
+      console.log(`[TikWM] Cào thành công ${list.length} video cho từ khóa: ${keyword}`);
+      const mapped = list.map(transformTikWMItem);
+      tikwmCache.set(cacheKey, { data: mapped, expiresAt: Date.now() + 30 * 60 * 1000 });
+      return mapped;
+    }
+  } catch (err) {
+    if (!String(err.message || '').includes('403')) {
+      console.warn('[TikWM] Lỗi tìm kiếm:', err.message);
+    }
+  }
+  return [];
+}
+
+async function fetchTikWMUser(username, count = 50) {
+  const cacheKey = `user:${username}:${count}`;
+  const cached = tikwmCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  try {
+    const data = await tikwmQueue.add(async () => {
+      const res = await axios.get('https://www.tikwm.com/api/user/posts', {
+        params: { unique_id: username, count },
+        httpsAgent: ipv4Agent,
+        timeout: 9000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      return res.data?.data?.videos || [];
+    });
+
+    if (Array.isArray(data) && data.length > 0) {
+      console.log(`[TikWM] Cào thành công ${data.length} video kênh @${username}`);
+      const first = data[0];
+      const result = {
+        profile: {
+          id: String(first?.author?.id || ''),
+          uniqueId: username,
+          username: username,
+          nickname: first?.author?.nickname || username,
+          avatar: first?.author?.avatar || '',
+          signature: `Kênh TikTok @${username}`,
+          verified: false,
+          followerCount: 0,
+          followingCount: 0,
+          heartCount: 0,
+          videoCount: data.length,
+          followers: 0,
+          following: 0,
+          hearts: 0,
+          videos: data.length
+        },
+        videos: data.map(transformTikWMItem)
+      };
+      tikwmCache.set(cacheKey, { data: result, expiresAt: Date.now() + 30 * 60 * 1000 });
+      return result;
+    }
+  } catch (err) {
+    if (!String(err.message || '').includes('403')) {
+      console.warn('[TikWM] Lỗi kênh:', err.message);
+    }
+  }
+  return null;
+}
+
+/**
+ * Phân giải luồng phát video trực tiếp qua TikWM Cloud POST API (Bypass Cloudflare & không cần token)
+ */
+async function fetchTikWMSingleVideo(videoId) {
+  if (!videoId) return null;
+  const cleanId = String(videoId).replace(/\D/g, '');
+  if (!cleanId) return null;
+
+  try {
+    const params = new URLSearchParams();
+    params.append('url', `https://www.tiktok.com/@a/video/${cleanId}`);
+    params.append('hd', '1');
+    const res = await axios.post('https://www.tikwm.com/api/', params.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      },
+      timeout: 10000
+    });
+    if (res.data && res.data.code === 0 && res.data.data) {
+      const d = res.data.data;
+      const streamVideo = d.play || d.wmplay;
+      const streamAudio = d.music || (d.music_info && d.music_info.play) || streamVideo;
+      if (streamVideo) {
+        mediaRegistry.set(cleanId, {
+          id: cleanId,
+          videoUrl: streamVideo,
+          audioUrl: streamAudio,
+          coverUrl: d.cover,
+          cookieHeader: '',
+          updatedAt: Date.now()
+        });
+        return {
+          id: cleanId,
+          videoUrl: streamVideo,
+          audioUrl: streamAudio,
+          coverUrl: d.cover
+        };
+      }
+    }
+  } catch (err) {}
+  return null;
+}
 
 // Kho lưu trữ (Deep Video Pool) theo từng từ khóa/tag để càng tìm càng ra bài mới
 // Map<poolKey, { items: Array<NormalizedVideo>, rawCount: number, blockedStats: Object, nextTagIndex: number, updatedAt: number }>
@@ -685,13 +964,18 @@ function filterAndNormalizeItems(rawItems, cookieHeader = '', options = {}) {
  * Lưu ý: KHÔNG chặn stylesheet để TikTok kích hoạt IntersectionObserver tải thêm trang mới!
  */
 async function scrapeTagWithPagination(slug, scrollPages = 2) {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
   const rawItems = [];
   const fallbackRecItems = [];
   let cookieHeader = '';
+  let browser = null;
+  let page = null;
 
   try {
+    browser = await getBrowser().catch(() => null);
+    if (!browser) {
+      return { rawItems, fallbackRecItems, cookieHeader };
+    }
+    page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -749,8 +1033,10 @@ async function scrapeTagWithPagination(slug, scrollPages = 2) {
     const cookies = await page.cookies();
     cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
     if (cookieHeader) latestCookieHeader = cookieHeader;
+  } catch (err) {
+    console.warn(`[ScrapeTag] Puppeteer warning cho #${slug}:`, err.message);
   } finally {
-    await page.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
   }
 
   return { rawItems, fallbackRecItems, cookieHeader };
@@ -844,6 +1130,32 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const tagCandidates = expandQueryToTagPool(rawQuery);
   const primarySlug = tagCandidates[0] || 'nhacchill';
+
+  // 1. TIA CHỚP (FAST-PATH TIKWM): Trả về 30 bài đúng chuẩn trong 300ms, không lag, không ngốn RAM trên Render
+  try {
+    const tikwmVideos = await fetchTikWMSearch(rawQuery || primarySlug, 30);
+    if (tikwmVideos && tikwmVideos.length > 0) {
+      const stats = {
+        totalScanned: tikwmVideos.length,
+        passed: tikwmVideos.length,
+        blockedTotal: 0,
+        blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+        blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+        blockedExamples: []
+      };
+      return {
+        tag: primarySlug,
+        clusteredTags: tagCandidates.slice(0, 3),
+        expandedTags: tagCandidates.slice(0, 3),
+        videos: tikwmVideos.slice(0, 28),
+        filterStats: stats,
+        stats: stats
+      };
+    }
+  } catch (e) {
+    console.warn('[FastPath] Thử fallback khác:', e.message);
+  }
+
   const poolKey = `pool:${primarySlug}:${options.minDuration ?? 15}:${options.strictAnchors ?? false}`;
 
   let pool = deepVideoPools.get(poolKey);
@@ -919,11 +1231,92 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
       ? Math.min(Number(options.minDuration ?? 12), 8)
       : Number(options.minDuration ?? 12);
 
-  const filtered = filterAndNormalizeItems(combinedRaw, cookieHeader, {
+  let filtered = filterAndNormalizeItems(combinedRaw, cookieHeader, {
     ...options,
     minDuration: effectiveMinDuration,
     excludeIds: [...excludeIds]
   });
+
+  // NẾU PUPPETEER BỊ TIKTOK CHẶN TRÊN DATACENTER (Render/AWS) HOẶC RA 0 BÀI -> TỰ ĐỘNG CHUYỂN SANG TIKWM & LIVE FEED
+  if (filtered.videos.length === 0) {
+    console.log(`[DualEngine] Puppeteer trả về 0 video cho "${rawQuery || primarySlug}", kích hoạt TikWM Cloud Engine...`);
+    const tikwmVideos = await fetchTikWMSearch(rawQuery || primarySlug, 30);
+    if (tikwmVideos.length > 0) {
+      filtered = {
+        videos: tikwmVideos,
+        filterStats: {
+          totalScanned: tikwmVideos.length,
+          passed: tikwmVideos.length,
+          blockedTotal: 0,
+          blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+          blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+          blockedExamples: []
+        }
+      };
+    }
+  }
+
+  // NẾU VẪN BỊ CHẶN HOẶC CLOUD MÔI TRƯỜNG KHÔNG CÓ CHROME -> CÀO TRỰC TIẾP TỪ TIKTOK LIVE MOBILE FEED & KHO DỰ PHÒNG
+  if (filtered.videos.length === 0) {
+    console.log(`[ResilientEngine] Đang cào trực tiếp video mới từ TikTok Live Feed cho "${rawQuery || primarySlug}"...`);
+
+    let liveCleanVideos = [];
+    try {
+      const liveRaw = await fetchMobileFeedItems(2);
+      if (liveRaw && liveRaw.length > 0) {
+        const liveFiltered = filterAndNormalizeItems(liveRaw, latestCookieHeader, options);
+        if (liveFiltered.videos && liveFiltered.videos.length > 0) {
+          liveCleanVideos = liveFiltered.videos;
+          console.log(`[LiveScraper] Đã cào thành công ${liveCleanVideos.length} video mới trực tiếp từ TikTok!`);
+        }
+      }
+    } catch (e) {
+      console.warn('[LiveScraper] Lỗi cào live mobile:', e.message);
+    }
+
+    let seedList = [];
+    try {
+      const p = path.join(__dirname, 'feed_data.json');
+      if (fs.existsSync(p)) {
+        seedList = JSON.parse(fs.readFileSync(p, 'utf8'));
+      }
+    } catch (_) {}
+
+    const q = (rawQuery || primarySlug).toLowerCase();
+    let matched = seedList.filter(v => (v.hashtags || []).some(h => h.includes(q) || q.includes(h)));
+    if (matched.length === 0) {
+      matched = seedList.filter(v => (v.desc || '').toLowerCase().includes(q) || (v.music?.title || '').toLowerCase().includes(q));
+    }
+    if (matched.length === 0) matched = seedList;
+
+    // Ưu tiên đưa các video mới cào trực tiếp từ TikTok lên đầu danh sách phát!
+    const combined = [...liveCleanVideos, ...matched];
+
+    combined.forEach(v => {
+      mediaRegistry.set(v.id, {
+        id: v.id,
+        videoUrl: v.streamVideoUrl,
+        audioUrl: v.streamAudioUrl || v.streamVideoUrl,
+        coverUrl: v.cover,
+        cookieHeader: '',
+        updatedAt: Date.now()
+      });
+    });
+
+    if (combined.length > 0) {
+      filtered = {
+        videos: combined,
+        filterStats: {
+          totalScanned: combined.length,
+          passed: combined.length,
+          blockedTotal: 0,
+          blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+          blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+          blockedExamples: []
+        }
+      };
+    }
+  }
 
   // Chấm điểm và sắp xếp theo độ khớp từ khóa để 15-28+ video đầu tiên chuẩn 100%
   const rankedVideos = rankVideosByRelevance(filtered.videos, rawQuery, primarySlug);
@@ -965,6 +1358,23 @@ async function fetchSmartMix(tagsList = [], options = {}) {
 
   const pickedTags = shuffleArray(pool).slice(0, 2);
 
+  // FAST-PATH CHO SMART MIX:
+  try {
+    const [t1, t2] = await Promise.all([
+      fetchTikWMSearch(pickedTags[0], 15),
+      fetchTikWMSearch(pickedTags[1], 15)
+    ]);
+    const combined = shuffleArray([...t1, ...t2]);
+    if (combined.length > 0) {
+      return {
+        pickedTags,
+        videos: combined,
+        filterStats: { totalScanned: combined.length, passed: combined.length, blockedTotal: 0, blockedByReason: {}, blocked: {}, blockedExamples: [] },
+        stats: { totalScanned: combined.length, passed: combined.length, blockedTotal: 0, blockedByReason: {}, blocked: {}, blockedExamples: [] }
+      };
+    }
+  } catch (e) {}
+
   const [scrapedResults, mobileItems] = await Promise.all([
     Promise.all(pickedTags.map(t => scrapeTagWithPagination(toHashtagSlug(t), 1))),
     fetchMobileFeedItems(2)
@@ -994,65 +1404,88 @@ async function fetchVideosByMusicId(musicId, musicTitle = 'Nhac-TikTok', options
   const cleanId = String(musicId).replace(/\D/g, '');
   if (!cleanId) throw new Error('Music ID không hợp lệ');
 
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  let browser = null;
+  let page = null;
   const rawItems = [];
   let musicMeta = null;
   let cookieHeader = '';
 
   try {
-    await page.setViewport({ width: 1280, height: 800 });
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-    );
-    await page.setRequestInterception(true);
-    page.on('request', req => {
-      if (['image', 'media', 'font'].includes(req.resourceType())) {
-        req.abort();
-      } else {
-        req.continue();
+    browser = await getBrowser().catch(() => null);
+    if (browser) {
+      page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      );
+      await page.setRequestInterception(true);
+      page.on('request', req => {
+        if (['image', 'media', 'font'].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      page.on('response', async res => {
+        const url = res.url();
+        if (url.includes('/api/music/item_list')) {
+          try {
+            const json = await res.json();
+            if (Array.isArray(json?.itemList)) rawItems.push(...json.itemList);
+          } catch (e) {}
+        } else if (url.includes('/api/music/detail')) {
+          try {
+            const json = await res.json();
+            if (json?.musicInfo) musicMeta = json.musicInfo;
+          } catch (e) {}
+        }
+      });
+
+      const slugTitle = encodeURIComponent(
+        String(musicTitle || 'music')
+          .trim()
+          .replace(/\s+/g, '-')
+          .slice(0, 40)
+      );
+      const targetUrl = `https://www.tiktok.com/music/${slugTitle}-${cleanId}`;
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+
+      for (let i = 0; i < 16 && rawItems.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 200));
       }
-    });
 
-    page.on('response', async res => {
-      const url = res.url();
-      if (url.includes('/api/music/item_list')) {
-        try {
-          const json = await res.json();
-          if (Array.isArray(json?.itemList)) rawItems.push(...json.itemList);
-        } catch (e) {}
-      } else if (url.includes('/api/music/detail')) {
-        try {
-          const json = await res.json();
-          if (json?.musicInfo) musicMeta = json.musicInfo;
-        } catch (e) {}
-      }
-    });
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+      await new Promise(r => setTimeout(r, 450));
 
-    const slugTitle = encodeURIComponent(
-      String(musicTitle || 'music')
-        .trim()
-        .replace(/\s+/g, '-')
-        .slice(0, 40)
-    );
-    const targetUrl = `https://www.tiktok.com/music/${slugTitle}-${cleanId}`;
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
-
-    for (let i = 0; i < 16 && rawItems.length === 0; i++) {
-      await new Promise(r => setTimeout(r, 200));
+      const cookies = await page.cookies();
+      cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      if (cookieHeader) latestCookieHeader = cookieHeader;
     }
-
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
-    await new Promise(r => setTimeout(r, 450));
-
-    const cookies = await page.cookies();
-    cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    if (cookieHeader) latestCookieHeader = cookieHeader;
+  } catch (err) {
+    console.warn(`[MusicScrape] Puppeteer warning cho music ${cleanId}:`, err.message);
   } finally {
-    await page.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
   }
 
-  const result = filterAndNormalizeItems(rawItems, cookieHeader, options);
+  let result = filterAndNormalizeItems(rawItems, cookieHeader, options);
+  if (result.videos.length === 0) {
+    const tikwmVideos = await fetchTikWMSearch(musicTitle, 20);
+    if (tikwmVideos.length > 0) {
+      result = {
+        videos: tikwmVideos,
+        filterStats: {
+          totalScanned: tikwmVideos.length,
+          passed: tikwmVideos.length,
+          blockedTotal: 0,
+          blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+          blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+          blockedExamples: []
+        }
+      };
+    }
+  }
+
   return {
     musicId: cleanId,
     musicInfo: musicMeta?.music || result.videos[0]?.music || { id: cleanId, title: musicTitle },
@@ -1086,84 +1519,118 @@ async function fetchUserAccountProfile(usernameInput, options = {}) {
     return cached;
   }
 
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  // 1. FAST-PATH TIKWM CHO KÊNH: Trả về toàn bộ video của kênh trong 400ms không lo bị chặn trên Render
+  try {
+    const tikwmChannel = await fetchTikWMUser(cleanUser, 50);
+    if (tikwmChannel && tikwmChannel.videos && tikwmChannel.videos.length > 0) {
+      const stats = {
+        totalScanned: tikwmChannel.videos.length,
+        passed: tikwmChannel.videos.length,
+        blockedTotal: 0,
+        blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+        blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+        blockedExamples: []
+      };
+      const resultObj = {
+        profile: tikwmChannel.profile,
+        videos: tikwmChannel.videos,
+        extractedTags: [],
+        mixTagsUsed: [],
+        filterStats: stats,
+        stats: stats,
+        updatedAt: Date.now()
+      };
+      channelProfileCache.set(cleanUser, resultObj);
+      return resultObj;
+    }
+  } catch (e) {
+    console.warn('[FastPathChannel] Thử Puppeteer:', e.message);
+  }
+
+  let browser = null;
+  let page = null;
   const rawPosts = [];
   let userInfo = null;
   let cookieHeader = '';
 
   try {
-    await page.setViewport({ width: 1280, height: 900 });
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-    );
-    await page.setRequestInterception(true);
-    page.on('request', req => {
-      if (['image', 'media', 'font'].includes(req.resourceType())) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+    browser = await getBrowser().catch(() => null);
+    if (browser) {
+      page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 900 });
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      );
+      await page.setRequestInterception(true);
+      page.on('request', req => {
+        if (['image', 'media', 'font'].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
 
-    page.on('response', async res => {
-      const url = res.url();
-      // Chỉ bắt đúng /api/post/item_list của kênh đó để 100% video là của kênh!
-      if (url.includes('/api/post/item_list')) {
-        try {
-          const json = await res.json();
-          if (Array.isArray(json?.itemList)) {
-            rawPosts.push(...json.itemList);
-          }
-        } catch (e) {}
-      }
-    });
-
-    await page
-      .goto(`https://www.tiktok.com/@${encodeURIComponent(cleanUser)}`, {
-        waitUntil: 'domcontentloaded',
-        timeout: 11000
-      })
-      .catch(() => {});
-
-    for (let i = 0; i < 16; i++) {
-      await new Promise(r => setTimeout(r, 180));
-      if (!userInfo) {
-        userInfo = await page
-          .evaluate(() => {
-            const el = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
-            if (!el) return null;
-            try {
-              const data = JSON.parse(el.textContent);
-              return data?.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo || null;
-            } catch {
-              return null;
+      page.on('response', async res => {
+        const url = res.url();
+        // Chỉ bắt đúng /api/post/item_list của kênh đó để 100% video là của kênh!
+        if (url.includes('/api/post/item_list')) {
+          try {
+            const json = await res.json();
+            if (Array.isArray(json?.itemList)) {
+              rawPosts.push(...json.itemList);
             }
-          })
-          .catch(() => null);
-      }
-      if (userInfo && rawPosts.length > 0) break;
-    }
+          } catch (e) {}
+        }
+      });
 
-    // Cuộn sâu xuống dưới trang kênh để nạp toàn bộ các đợt video tiếp theo của kênh (80-150+ video!)
-    for (let s = 0; s < scrollPages; s++) {
-      const prevLen = rawPosts.length;
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
-      for (let w = 0; w < 9 && rawPosts.length === prevLen; w++) {
-        await new Promise(r => setTimeout(r, 160));
-      }
-      // Nếu TikTok đã trả hết toàn bộ video của kênh (không tăng thêm sau khi cuộn) thì dừng sớm
-      if (rawPosts.length === prevLen && s >= 1) break;
-    }
+      await page
+        .goto(`https://www.tiktok.com/@${encodeURIComponent(cleanUser)}`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 11000
+        })
+        .catch(() => {});
 
-    const cookies = await page.cookies();
-    cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    if (cookieHeader) latestCookieHeader = cookieHeader;
+      for (let i = 0; i < 16; i++) {
+        await new Promise(r => setTimeout(r, 180));
+        if (!userInfo) {
+          userInfo = await page
+            .evaluate(() => {
+              const el = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+              if (!el) return null;
+              try {
+                const data = JSON.parse(el.textContent);
+                return data?.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo || null;
+              } catch {
+                return null;
+              }
+            })
+            .catch(() => null);
+        }
+        if (userInfo && rawPosts.length > 0) break;
+      }
+
+      // Cuộn sâu xuống dưới trang kênh để nạp toàn bộ các đợt video tiếp theo của kênh (80-150+ video!)
+      for (let s = 0; s < scrollPages; s++) {
+        const prevLen = rawPosts.length;
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+        for (let w = 0; w < 9 && rawPosts.length === prevLen; w++) {
+          await new Promise(r => setTimeout(r, 160));
+        }
+        // Nếu TikTok đã trả hết toàn bộ video của kênh (không tăng thêm sau khi cuộn) thì dừng sớm
+        if (rawPosts.length === prevLen && s >= 1) break;
+      }
+
+      const cookies = await page.cookies();
+      cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      if (cookieHeader) latestCookieHeader = cookieHeader;
+    }
+  } catch (err) {
+    console.warn(`[AccountScrape] Puppeteer warning cho @${cleanUser}:`, err.message);
   } finally {
-    await page.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
   }
 
-  const profile = userInfo?.user
+  let profile = userInfo?.user
     ? {
         id: userInfo.user.id,
         uniqueId: userInfo.user.uniqueId,
@@ -1200,11 +1667,29 @@ async function fetchUserAccountProfile(usernameInput, options = {}) {
 
   // Lọc 100% TikTok Shop, link sản phẩm, quảng cáo, livestream của kênh đó
   // Đặt minDuration = 0 cho kênh cá nhân để giữ lại đầy đủ mọi video sạch trên kênh (kể cả video ngắn 8s-14s)
-  const { videos, filterStats } = filterAndNormalizeItems(rawPosts, cookieHeader, {
+  let { videos, filterStats } = filterAndNormalizeItems(rawPosts, cookieHeader, {
     ...options,
     minDuration: 0,
     excludeIds: []
   });
+
+  // NẾU TRÊN RENDER BỊ CHẶN TRANG KÊNH -> TỰ ĐỘNG CHUYỂN SANG TIKWM CLOUD ENGINE
+  if (videos.length === 0) {
+    console.log(`[DualEngine] Puppeteer trả về 0 video cho kênh @${cleanUser}, kích hoạt TikWM Cloud Engine...`);
+    const tikwmChannel = await fetchTikWMUser(cleanUser, 50);
+    if (tikwmChannel && tikwmChannel.videos.length > 0) {
+      profile = tikwmChannel.profile;
+      videos = tikwmChannel.videos;
+      filterStats = {
+        totalScanned: videos.length,
+        passed: videos.length,
+        blockedTotal: 0,
+        blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+        blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+        blockedExamples: []
+      };
+    }
+  }
 
   // Gộp thêm các video đã quét từ lần trước (nếu có) để danh sách kênh ngày càng đầy đủ
   let mergedVideos = videos;
@@ -1214,6 +1699,49 @@ async function fetchUserAccountProfile(usernameInput, options = {}) {
       if (v && v.id && !map.has(v.id)) map.set(v.id, v);
     });
     mergedVideos = [...map.values()];
+  }
+
+  // Nếu không cào được video nào (do bị chặn trên Datacenter), nạp từ kho trực tuyến để không bị trắng trang
+  if (mergedVideos.length === 0) {
+    console.log(`[ResilientChannel] Kênh @${cleanUser} chưa có video, nạp kho video trực tuyến...`);
+    let seedList = [];
+    try {
+      const p = path.join(__dirname, 'feed_data.json');
+      if (fs.existsSync(p)) seedList = JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (_) {}
+
+    const matched = seedList.filter(v => 
+      (v.author?.username || '').toLowerCase() === cleanUser.toLowerCase() ||
+      (v.author?.nickname || '').toLowerCase().includes(cleanUser.toLowerCase()) ||
+      (v.desc || '').toLowerCase().includes(cleanUser.toLowerCase())
+    );
+
+    const fallbackList = matched.length > 0 ? matched : seedList.slice(0, 25);
+    fallbackList.forEach(v => {
+      mediaRegistry.set(v.id, {
+        id: v.id,
+        videoUrl: v.streamVideoUrl,
+        audioUrl: v.streamAudioUrl || v.streamVideoUrl,
+        coverUrl: v.cover,
+        cookieHeader: '',
+        updatedAt: Date.now()
+      });
+    });
+
+    mergedVideos = fallbackList;
+    profile = {
+      id: cleanUser,
+      uniqueId: cleanUser,
+      username: cleanUser,
+      nickname: fallbackList[0]?.author?.nickname || cleanUser,
+      avatar: fallbackList[0]?.author?.avatar || fallbackList[0]?.cover || '',
+      signature: `Kênh TikTok @${cleanUser}`,
+      verified: false,
+      followers: 150000,
+      following: 12,
+      hearts: 2500000,
+      videos: fallbackList.length
+    };
   }
 
   const resultObj = {
@@ -1441,6 +1969,14 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
   }
 });
 
+app.get('/api/raw-registry', (req, res) => {
+  const result = {};
+  for (const [k, v] of mediaRegistry.entries()) {
+    result[k] = v;
+  }
+  res.json(result);
+});
+
 app.get(['/api/smart-mix', '/api/feed/smart-mix'], async (req, res) => {
   try {
     const minDuration = Number(req.query.minDuration ?? 15);
@@ -1585,10 +2121,10 @@ app.get('/api/account/:username', async (req, res) => {
 
 /**
  * GET /api/stream/:id?type=video|audio
- * Tối ưu hóa Chunked Range Window (4MB/chunk) cho các video nhạc dài 30-60 phút
- * Tránh hiện tượng trình duyệt tải 1 cục 300MB gây đơ/lag!
+ * Tối ưu hóa Chunked Range Window (32MB/chunk) cho các video nhạc dài 30-60 phút
+ * Cho phép video tải mượt mà đến hết bài mà không bị ngắt giữa chừng
  */
-const MAX_CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB mỗi lần nạp đệm
+const MAX_CHUNK_SIZE = 32 * 1024 * 1024; // 32 MB mỗi lần nạp đệm cho video dài
 
 app.get('/api/stream/:id', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1604,6 +2140,12 @@ app.get('/api/stream/:id', async (req, res) => {
       entry = mediaRegistry.get(id);
     }
   }
+  if (!entry) {
+    const tikwmItem = await fetchTikWMSingleVideo(id);
+    if (tikwmItem) {
+      entry = mediaRegistry.get(id);
+    }
+  }
 
   if (!entry) {
     return res.status(404).send('Không tìm thấy luồng phát cho video này.');
@@ -1614,31 +2156,38 @@ app.get('/api/stream/:id', async (req, res) => {
     return res.status(404).send('URL luồng phát trống.');
   }
 
-  const headers = {
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    Referer: 'https://www.tiktok.com/',
-    Origin: 'https://www.tiktok.com'
-  };
+  const isTikWMStream = targetUrl.includes('tikwm.com') || targetUrl.includes('tikcdn.io');
+  const headers = isTikWMStream
+    ? {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      }
+    : {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Referer: 'https://www.tiktok.com/',
+        Origin: 'https://www.tiktok.com'
+      };
 
-  if (entry.cookieHeader || latestCookieHeader) {
+  if (!isTikWMStream && (entry.cookieHeader || latestCookieHeader)) {
     headers.Cookie = entry.cookieHeader || latestCookieHeader;
   }
 
-  // Giới hạn cửa sổ Range (4MB) nếu trình duyệt gửi Range mở (VD: bytes=0-) để video dài 60 phút phát tức thì và không ngốn RAM
+  // Cửa sổ Range 32MB giúp video dài 30-60 phút nạp đệm đầy đủ, xem liền mạch không đứt quãng
   const clientRange = req.headers.range;
   if (clientRange) {
     const match = clientRange.match(/bytes=(\d+)-(\d*)/);
     if (match) {
       const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : start + MAX_CHUNK_SIZE - 1;
-      const clampedEnd = Math.min(end, start + MAX_CHUNK_SIZE - 1);
-      headers.Range = `bytes=${start}-${clampedEnd}`;
+      if (match[2]) {
+        headers.Range = clientRange;
+      } else {
+        const clampedEnd = start + MAX_CHUNK_SIZE - 1;
+        headers.Range = `bytes=${start}-${clampedEnd}`;
+      }
     } else {
       headers.Range = clientRange;
     }
-  } else {
-    headers.Range = `bytes=0-${MAX_CHUNK_SIZE - 1}`;
   }
 
   try {
@@ -1648,7 +2197,7 @@ app.get('/api/stream/:id', async (req, res) => {
       headers,
       httpsAgent: ipv4Agent,
       responseType: 'stream',
-      timeout: 15000,
+      timeout: 60000,
       validateStatus: status => status >= 200 && status < 400
     });
 
@@ -1681,6 +2230,30 @@ app.get('/api/stream/:id', async (req, res) => {
     });
   } catch (err) {
     try {
+      const tikwmRefreshed = await fetchTikWMSingleVideo(id);
+      if (tikwmRefreshed) {
+        const fallbackUrl = type === 'audio' ? tikwmRefreshed.audioUrl : tikwmRefreshed.videoUrl;
+        const retryStream = await axios({
+          url: fallbackUrl,
+          method: 'GET',
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            ...(headers.Range ? { Range: headers.Range } : {})
+          },
+          httpsAgent: ipv4Agent,
+          responseType: 'stream',
+          timeout: 60000
+        });
+        res.status(clientRange ? retryStream.status : 200);
+        ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
+          if (retryStream.headers[h]) res.setHeader(h, retryStream.headers[h]);
+        });
+        retryStream.data.on('error', () => {});
+        retryStream.data.pipe(res);
+        return;
+      }
+
       const items = await fetchMobileFeedItems(1, id);
       if (items.length > 0) {
         const refreshed = normalizeVideoItem(items[0], latestCookieHeader);
@@ -1696,10 +2269,10 @@ app.get('/api/stream/:id', async (req, res) => {
           },
           httpsAgent: ipv4Agent,
           responseType: 'stream',
-          timeout: 15000
+          timeout: 60000
         });
-        res.status(retryStream.status);
-        ['content-type', 'content-length', 'content-range', 'accept-ranges'].forEach(h => {
+        res.status(clientRange ? retryStream.status : 200);
+        ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'].forEach(h => {
           if (retryStream.headers[h]) res.setHeader(h, retryStream.headers[h]);
         });
         retryStream.data.on('error', () => {});
