@@ -392,14 +392,14 @@ async function fetchTikWMUser(username, count = 35, forceRefresh = false) {
       }
     } catch (_) {}
 
-    // 2. Thu thập video theo từ khóa @username qua nhiều trang (cursor 0 & 30)
+    // 2. Thu thập trọn bộ video của kênh qua nhiều trang liên tiếp (cursor 0, 30, 60, 90, 120)
     const rawVideos = [];
     const seenIds = new Set();
-    for (const cursor of [0, 30]) {
+    for (const cursor of [0, 30, 60, 90, 120]) {
       try {
         const body = new URLSearchParams({
           keywords: cleanUser,
-          count: '30',
+          count: '35',
           cursor: String(cursor),
           HD: '1'
         }).toString();
@@ -412,13 +412,16 @@ async function fetchTikWMUser(username, count = 35, forceRefresh = false) {
           }
         });
         const list = res.data?.data?.videos || [];
+        if (list.length === 0) break; // Hết video của kênh, dừng sớm để tối ưu tốc độ
         for (const v of list) {
           if (!seenIds.has(v.video_id)) {
             seenIds.add(v.video_id);
             rawVideos.push(v);
           }
         }
-      } catch (_) {}
+      } catch (_) {
+        break;
+      }
     }
 
     // 3. LỌC CHẶT CHẼ DUY NHẤT 1 TÀI KHOẢN (ĐỘ CHÍNH XÁC 100%, TUYỆT ĐỐI KHÔNG TRỘN NHIỀU TÀI KHOẢN KHÁC)
@@ -806,8 +809,49 @@ const COMMERCIAL_ANCHOR_REGEX = new RegExp(
 const CAPCUT_ANCHOR_REGEX = /capcut|tt_capcut|viamaker/i;
 const SHOP_ANCHOR_TYPES = new Set([33, 35, 56, 60, 62]);
 
+function checkDurationFilter(durationSec, rule) {
+  const d = Number(durationSec) || 0;
+  if (!rule || rule === '0' || rule === 'all') return { passed: true };
+
+  const str = String(rule).trim().toLowerCase();
+  // Điều kiện nhỏ hơn hoặc bằng (<= X)
+  if (str.startsWith('lte_')) {
+    const max = Number(str.replace('lte_', ''));
+    if (d > max) {
+      return { passed: false, reason: 'durationMismatch', detail: `Dài hơn mức yêu cầu (${d}s > ${max}s)` };
+    }
+    return { passed: true };
+  }
+  // Điều kiện lớn hơn hoặc bằng (>= X)
+  if (str.startsWith('gte_')) {
+    const min = Number(str.replace('gte_', ''));
+    if (d < min) {
+      return { passed: false, reason: 'shortDuration', detail: `Ngắn hơn mức yêu cầu (${d}s < ${min}s)` };
+    }
+    return { passed: true };
+  }
+  // Điều kiện khoảng (từ X đến Y)
+  if (str.startsWith('range_')) {
+    const parts = str.split('_');
+    const min = Number(parts[1]) || 0;
+    const max = Number(parts[2]) || 9999;
+    if (d < min || d > max) {
+      return { passed: false, reason: 'durationMismatch', detail: `Thời lượng ${d}s không thuộc khoảng [${min}s - ${max}s]` };
+    }
+    return { passed: true };
+  }
+  // Tương thích ngược các giá trị số cũ (VD: 12, 25, 60 nghĩa là >=)
+  const legacyMin = Number(str);
+  if (!isNaN(legacyMin) && legacyMin > 0) {
+    if (d > 0 && d < legacyMin) {
+      return { passed: false, reason: 'shortDuration', detail: `Ngắn (${d}s < ${legacyMin}s)` };
+    }
+  }
+  return { passed: true };
+}
+
 function inspectVideoCleanlinessFast(rawItem, options = {}) {
-  const minDuration = Number(options.minDuration ?? 15);
+  const durationRule = options.durationRule || options.minDuration;
   const strictAnchors = options.strictAnchors === true || options.strictAnchors === 'true';
 
   // 1. Livestream check (O(1))
@@ -896,11 +940,12 @@ function inspectVideoCleanlinessFast(rawItem, options = {}) {
   const rawDur = Number(videoObj.duration || musicObj.duration || 0);
   const durationSec = isMobileItem && rawDur > 1000 ? Math.round(rawDur / 1000) : rawDur;
 
-  if (minDuration > 0 && durationSec > 0 && durationSec < minDuration) {
+  const durCheck = checkDurationFilter(durationSec, durationRule);
+  if (!durCheck.passed) {
     return {
       passed: false,
-      reason: 'shortDuration',
-      detail: `Ngắn (${durationSec}s < ${minDuration}s)`
+      reason: durCheck.reason || 'shortDuration',
+      detail: durCheck.detail
     };
   }
 
@@ -2237,7 +2282,7 @@ function shuffleList(list) {
 async function getFreshBatch(minDuration, excludeIds, count = 30) {
   const exclude = new Set((excludeIds || []).map(String));
   const pick = () =>
-    freshPool.items.filter(v => !exclude.has(String(v.id)) && Number(v.duration || v.video?.duration || 0) >= minDuration);
+    freshPool.items.filter(v => !exclude.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, minDuration).passed);
 
   let fresh = pick();
   // Chỉ chờ mạng khi kho RAM thực sự dưới 6 bài; nếu đã có >= 6 bài thì trả về tức thì (< 5ms) và cào bù ở nền
@@ -2259,7 +2304,7 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
       if (fs.existsSync(p)) seed = JSON.parse(fs.readFileSync(p, 'utf8'));
     } catch (_) {}
     seed = shuffleList(
-      seed.filter(v => v && v.id && !exclude.has(String(v.id)) && Number(v.duration || 0) >= minDuration)
+      seed.filter(v => v && v.id && !exclude.has(String(v.id)) && checkDurationFilter(v.duration || 0, minDuration).passed)
     ).slice(0, count - fresh.length);
     seed.forEach(v => {
       if (!mediaRegistry.has(v.id)) {
@@ -2289,7 +2334,8 @@ setTimeout(async () => {
 app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
   try {
     const tag = req.query.tag || 'nhacchill';
-    const minDuration = Number(req.query.minDuration ?? 15);
+    const durationRule = req.query.durationRule || req.query.minDuration || 'gte_12';
+    const minDuration = durationRule;
     const strictAnchors = req.query.strictAnchors === 'true';
     const forceRefresh = req.query.refresh === 'true';
     const excludeIds = req.query.exclude ? String(req.query.exclude).split(',').filter(Boolean) : [];
@@ -2299,12 +2345,13 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
       const excludeSet = new Set(excludeIds.map(String));
       const [tagScraped, batchData] = await Promise.all([
         fetchTikWMSearch(tag, 25, true).catch(() => []),
-        getFreshBatch(minDuration, excludeIds, 20)
+        getFreshBatch(durationRule, excludeIds, 20)
       ]);
       const cleanTagVideos = (tagScraped || []).filter(v => {
         if (!v || !v.id || excludeSet.has(String(v.id))) return false;
         const captionLower = String(v.desc || '').toLowerCase();
         if (SHOP_SPAM_REGEX.test(captionLower)) return false;
+        if (!checkDurationFilter(v.duration || v.video?.duration || 0, durationRule).passed) return false;
         excludeSet.add(String(v.id));
         return true;
       });
@@ -2366,7 +2413,8 @@ app.get('/api/raw-registry', (req, res) => {
 
 app.get(['/api/smart-mix', '/api/feed/smart-mix'], async (req, res) => {
   try {
-    const minDuration = Number(req.query.minDuration ?? 15);
+    const durationRule = req.query.durationRule || req.query.minDuration || 'gte_12';
+    const minDuration = durationRule;
     const strictAnchors = req.query.strictAnchors === 'true';
     const forceRefresh = req.query.refresh === 'true';
     const username = req.query.username ? String(req.query.username).replace(/^@/, '').trim() : '';
@@ -2389,7 +2437,7 @@ app.get(['/api/smart-mix', '/api/feed/smart-mix'], async (req, res) => {
       });
     }
 
-    const { fresh, seed } = await getFreshBatch(minDuration, excludeIds, 30);
+    const { fresh, seed } = await getFreshBatch(durationRule, excludeIds, 30);
     const videos = [...fresh, ...seed];
     const stats = {
       totalScanned: videos.length,
@@ -2425,7 +2473,8 @@ app.get('/api/search', async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (!q) return res.status(400).json({ error: 'Vui lòng nhập từ khóa tìm kiếm' });
 
-    const minDuration = Number(req.query.minDuration ?? 15);
+    const durationRule = req.query.durationRule || req.query.minDuration || 'gte_12';
+    const minDuration = durationRule;
     const strictAnchors = req.query.strictAnchors === 'true';
     const forceRefresh = req.query.refresh === 'true';
     const excludeIds = req.query.exclude ? String(req.query.exclude).split(',').filter(Boolean) : [];
@@ -2530,7 +2579,8 @@ app.get(['/api/music/:musicId', '/api/feed/music'], async (req, res) => {
   try {
     const musicId = req.params.musicId || req.query.musicId;
     const title = req.query.title || 'music';
-    const minDuration = Number(req.query.minDuration ?? 15);
+    const durationRule = req.query.durationRule || req.query.minDuration || 'gte_12';
+    const minDuration = durationRule;
     const strictAnchors = req.query.strictAnchors === 'true';
 
     const data = await fetchVideosByMusicId(musicId, title, { minDuration, strictAnchors });
@@ -2542,6 +2592,39 @@ app.get(['/api/music/:musicId', '/api/feed/music'], async (req, res) => {
     console.error('[/api/music] Error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+let userTikTokSessionCookie = '';
+
+app.post('/api/auth/tiktok-session', async (req, res) => {
+  try {
+    const { sessionid, cookie } = req.body || {};
+    let cookieStr = (cookie || '').trim();
+    if (!cookieStr && sessionid) {
+      cookieStr = `sessionid=${encodeURIComponent(sessionid.trim())}`;
+    }
+    if (!cookieStr) {
+      userTikTokSessionCookie = '';
+      return res.json({ success: true, connected: false, message: 'Đã hủy phiên đăng nhập TikTok' });
+    }
+
+    userTikTokSessionCookie = cookieStr;
+    latestCookieHeader = `${latestCookieHeader ? latestCookieHeader + '; ' : ''}${cookieStr}`;
+    return res.json({
+      success: true,
+      connected: true,
+      message: 'Kết nối Session TikTok thành công! Đã mở quyền cào dữ liệu không giới hạn.'
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/tiktok-session', (req, res) => {
+  res.json({
+    connected: Boolean(userTikTokSessionCookie),
+    hasSession: Boolean(userTikTokSessionCookie)
+  });
 });
 
 app.get('/api/account/:username', async (req, res) => {

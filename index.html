@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107v8" />
+  <link rel="stylesheet" href="styles.css?v=20261107v9" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#fe2c55" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -130,6 +130,9 @@
             <input type="text" id="accountInput" placeholder="Nhập @tên_kênh (VD: hbiskibidi)..." autocomplete="off" />
             <button type="submit" id="btnConnectAccount">Mở kênh</button>
           </form>
+          <button type="button" class="tt-session-login-btn" id="btnOpenSessionModal">
+            🔑 Đăng nhập Cookie / Session để cào mạnh
+          </button>
         </div>
 
         <div id="accountConnected" class="tt-connected-box hidden">
@@ -165,13 +168,18 @@
           <span>🌈 Ambient: <strong id="ambientStateLabel">Rực rỡ</strong></span>
         </button>
 
-        <div class="tt-glass-pill select-pill" title="Lọc bỏ các video quá ngắn">
-          <span>⏱️</span>
+        <div class="tt-glass-pill select-pill" title="Lọc theo thời lượng video: ngắn, vừa hoặc dài">
+          <span id="durationPillLabel">⏱️ &ge; 12s</span>
           <select id="minDurationSelect">
-            <option value="0">Mọi độ dài</option>
-            <option value="12" selected>&ge; 12s</option>
-            <option value="25">&ge; 25s</option>
-            <option value="60">&ge; 60s (Nhạc dài)</option>
+            <option value="all">Mọi độ dài</option>
+            <option value="lte_15">&le; 15s (Cực ngắn)</option>
+            <option value="lte_30">&le; 30s (Dưới 30s)</option>
+            <option value="lte_60">&le; 60s (Dưới 1 phút)</option>
+            <option value="range_15_60">15s - 60s (Chuẩn)</option>
+            <option value="gte_12" selected>&ge; 12s (Mặc định)</option>
+            <option value="gte_30">&ge; 30s (Trên 30s)</option>
+            <option value="gte_60">&ge; 60s (Nhạc dài > 1p)</option>
+            <option value="gte_180">&ge; 180s (Bài hát > 3p)</option>
           </select>
         </div>
 
@@ -309,6 +317,10 @@
             <button type="button" class="menu-row" id="btnMenuAmbient">
               <span class="menu-row-label">🌈 Ánh sáng Ambient</span>
               <span class="menu-row-value"><b id="ambientMenuLabel">Rực rỡ</b> ›</span>
+            </button>
+            <button type="button" class="menu-row" id="btnTogglePerformanceMode">
+              <span class="menu-row-label">⚡ Chế độ mượt (Máy yếu)</span>
+              <span class="tt-switch"></span>
             </button>
             <div class="menu-divider"></div>
             <button type="button" class="menu-row" id="btnMenuFullscreen">
@@ -687,9 +699,41 @@
         </div>
       </div>
     </div>
+    <!-- MODAL ĐĂNG NHẬP SESSION TIKTOK CHÍNH CHỦ -->
+    <div class="modal-backdrop hidden" id="sessionModal">
+      <div class="modal-box session-modal-box">
+        <div class="modal-header">
+          <h3>🔑 Đăng Nhập TikTok Bằng Session Cookie</h3>
+          <button type="button" class="btn-close-modal" id="btnCloseSessionModal">✕</button>
+        </div>
+        <p class="modal-desc">
+          Đăng nhập bằng <code>sessionid</code> giúp web cào trực tiếp Bảng tin <strong>Dành cho bạn (FYP)</strong> cá nhân hóa, video <strong>Đã thích (Liked)</strong>, danh sách <strong>Đang theo dõi (Following)</strong> và vượt 100% giới hạn chặn IP của TikTok!
+        </p>
+
+        <div class="session-guide-box">
+          <h4>💡 Cách lấy mã <code>sessionid</code> trong 10 giây:</h4>
+          <ol>
+            <li>Mở trang <strong>tiktok.com</strong> trên trình duyệt máy tính hoặc điện thoại đã đăng nhập tài khoản.</li>
+            <li>Nhấn phím <code>F12</code> (hoặc Kiểm tra trang), chọn tab <strong>Application</strong> (Ứng dụng / Bộ nhớ).</li>
+            <li>Ở cột trái chọn <strong>Cookies &rarr; https://www.tiktok.com</strong>.</li>
+            <li>Tìm dòng có tên <code>sessionid</code>, nhấp đúp vào cột <strong>Value</strong> và sao chép (Copy).</li>
+          </ol>
+        </div>
+
+        <div class="session-input-group">
+          <label for="tiktokSessionInput">Dán mã <strong>sessionid</strong> (hoặc chuỗi cookie) vào đây:</label>
+          <input type="password" id="tiktokSessionInput" placeholder="Ví dụ: 7a8b9c0d1e2f3a4b..." autocomplete="off" />
+        </div>
+
+        <div class="session-modal-actions">
+          <button type="button" class="btn-primary" id="btnSaveSessionCookie">Xác thực &amp; Lưu Session</button>
+          <button type="button" class="btn-secondary" id="btnClearSessionCookie">Hủy đăng nhập</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script src="catalog_bundle.js?v=20261107v8"></script>
-  <script src="app.js?v=20261107v8"></script>
+  <script src="catalog_bundle.js?v=20261107v9"></script>
+  <script src="app.js?v=20261107v9"></script>
 </body>
 </html>

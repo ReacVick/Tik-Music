@@ -2224,6 +2224,145 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
   line-height: 1.5;
 }
 
+/* ---------- Modal Đăng nhập Session TikTok ---------- */
+.tt-session-login-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(254, 44, 85, 0.16);
+  border: 1px dashed rgba(254, 44, 85, 0.45);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.tt-session-login-btn:hover {
+  background: rgba(254, 44, 85, 0.3);
+  border-color: rgba(254, 44, 85, 0.8);
+}
+
+.session-modal-box {
+  max-width: 520px;
+}
+
+.session-guide-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.session-guide-box h4 {
+  margin: 0 0 6px 0;
+  color: #fff;
+  font-size: 13px;
+}
+
+.session-guide-box ol {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+
+.session-guide-box code {
+  background: rgba(254, 44, 85, 0.2);
+  color: #fda4af;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.session-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.session-input-group label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.session-input-group input {
+  background: #0d0d12;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+.session-input-group input:focus {
+  border-color: var(--tt-cyan);
+}
+
+.session-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.session-modal-actions .btn-primary {
+  background: var(--tt-red);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.session-modal-actions .btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Tối ưu hóa hiệu năng máy yếu (Chế độ mượt) ---------- */
+.ambient-backdrop-canvas,
+.ambient-stage-canvas {
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+body.perf-mode-active .ambient-backdrop-canvas {
+  display: none !important;
+}
+
+body.perf-mode-active .ambient-stage-canvas {
+  filter: blur(16px) saturate(180%) brightness(1.15) !important;
+  opacity: 0.65 !important;
+}
+
+@media (max-width: 600px) {
+  .ambient-backdrop-canvas {
+    display: none !important; /* Tắt canvas nền sau trên di động để siêu mượt 60fps */
+  }
+
+  .ambient-stage-canvas {
+    filter: blur(28px) saturate(210%) brightness(1.25) !important;
+  }
+}
+
 
 /* =====================================================================
    BẢN CẬP NHẬT: MENU 3 CHẤM · ẨN THANH TRÊN · THƯ VIỆN · TOÀN MÀN HÌNH

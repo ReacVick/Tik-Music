@@ -36,6 +36,9 @@ const STORAGE_KEYS = {
   SETTINGS: 'ttm_settings',
   SEEN_IDS: 'ttm_seen_ids',
   DOLBY: 'ttm_dolby_config',
+  DURATION_RULE: 'ttm_duration_rule',
+  PERF_MODE: 'ttm_perf_mode',
+  TIKTOK_SESSION: 'ttm_tiktok_session',
 };
 
 const DEFAULT_CUSTOM_TAGS = ['gaixinhnhay', 'nhaytrend', 'nhacchill', 'lofi', 'remix'];
@@ -48,6 +51,59 @@ const AMBIENT_LABELS = {
 };
 
 const ASPECT_MODES = ['auto', '16:9', '9:16'];
+
+function matchesDurationFilter(duration, rule) {
+  const d = Number(duration) || 0;
+  if (!rule || rule === '0' || rule === 'all') return true;
+  const str = String(rule).trim().toLowerCase();
+  if (str.startsWith('lte_')) {
+    const max = Number(str.replace('lte_', ''));
+    return d <= max;
+  }
+  if (str.startsWith('gte_')) {
+    const min = Number(str.replace('gte_', ''));
+    return d >= min;
+  }
+  if (str.startsWith('range_')) {
+    const parts = str.split('_');
+    const min = Number(parts[1]) || 0;
+    const max = Number(parts[2]) || 9999;
+    return d >= min && d <= max;
+  }
+  const num = Number(str);
+  if (!isNaN(num) && num > 0) return d >= num;
+  return true;
+}
+
+const isLowEndDevice = Boolean(
+  (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+  (window.innerWidth <= 600)
+);
+
+function updateDurationPillLabel() {
+  if (!dom.durationPillLabel) return;
+  const rule = state.durationRule || 'gte_12';
+  const labels = {
+    all: '⏱️ Mọi độ dài',
+    lte_15: '⏱️ ≤ 15s',
+    lte_30: '⏱️ ≤ 30s',
+    lte_60: '⏱️ ≤ 60s',
+    range_15_60: '⏱️ 15-60s',
+    gte_12: '⏱️ ≥ 12s',
+    gte_30: '⏱️ ≥ 30s',
+    gte_60: '⏱️ ≥ 60s',
+    gte_180: '⏱️ ≥ 180s',
+  };
+  dom.durationPillLabel.textContent = labels[rule] || `⏱️ ${rule}`;
+}
+
+function applyPerformanceModeUI() {
+  const active = Boolean(state.perfMode);
+  document.body.classList.toggle('perf-mode-active', active);
+  if (dom.btnTogglePerformanceMode) {
+    dom.btnTogglePerformanceMode.classList.toggle('active', active);
+  }
+}
 
 // ============================================================================
 // 6 CẤU HÌNH ACOUSTIC DOLBY ATMOS KHÁC BIỆT RÕ RỆT TRÊN TAI NGHE CÓ DÂY
@@ -175,6 +231,8 @@ const state = {
   lastQueryValue: 'nhacchill',
   lastMusicMeta: null,
   minDuration: 12,
+  durationRule: 'gte_12',
+  perfMode: false,
   strictAnchors: false,
   isLooping: false,
   autoScrollNext: true,
@@ -387,6 +445,8 @@ const dom = {
   searchForm: document.getElementById('searchForm'),
   searchInput: document.getElementById('searchInput'),
   minDurationSelect: document.getElementById('minDurationSelect'),
+  durationPillLabel: document.getElementById('durationPillLabel'),
+  btnTogglePerformanceMode: document.getElementById('btnTogglePerformanceMode'),
   strictAnchorsToggle: document.getElementById('strictAnchorsToggle'),
   sidebarTagsCloud: document.getElementById('sidebarTagsCloud'),
   btnToggleQueueDrawer: document.getElementById('btnToggleQueueDrawer'),
@@ -455,6 +515,14 @@ const dom = {
   modalBlockedSpam: document.getElementById('modalBlockedSpam'),
   modalBlockedShort: document.getElementById('modalBlockedShort'),
   blockedExamplesList: document.getElementById('blockedExamplesList'),
+
+  // Session Modal
+  sessionModal: document.getElementById('sessionModal'),
+  btnOpenSessionModal: document.getElementById('btnOpenSessionModal'),
+  btnCloseSessionModal: document.getElementById('btnCloseSessionModal'),
+  tiktokSessionInput: document.getElementById('tiktokSessionInput'),
+  btnSaveSessionCookie: document.getElementById('btnSaveSessionCookie'),
+  btnClearSessionCookie: document.getElementById('btnClearSessionCookie'),
 };
 
 // ============================================================================
@@ -882,14 +950,17 @@ function renderAmbientFrame() {
   if (dom.videoPlayer.videoWidth <= 0 || dom.videoPlayer.videoHeight <= 0) return;
 
   try {
-    const backdropCtx = dom.ambientBackdropCanvas?.getContext('2d');
-    if (backdropCtx) {
-      drawSymmetricAmbientSource(
-        backdropCtx,
-        dom.videoPlayer,
-        dom.ambientBackdropCanvas.width,
-        dom.ambientBackdropCanvas.height
-      );
+    // Trên thiết bị di động hoặc khi bật Chế độ mượt, bỏ qua canvas nền toàn màn hình để giảm 60% tải GPU
+    if (!state.perfMode && window.innerWidth > 600) {
+      const backdropCtx = dom.ambientBackdropCanvas?.getContext('2d');
+      if (backdropCtx) {
+        drawSymmetricAmbientSource(
+          backdropCtx,
+          dom.videoPlayer,
+          dom.ambientBackdropCanvas.width,
+          dom.ambientBackdropCanvas.height
+        );
+      }
     }
     const stageCtx = dom.ambientStageCanvas?.getContext('2d');
     if (stageCtx) {
@@ -907,8 +978,9 @@ function renderAmbientFrame() {
 
 function initAmbientLightEngine() {
   if (ambientIntervalId) clearInterval(ambientIntervalId);
-  // Cập nhật quầng sáng Ambient 14fps (mỗi 70ms) êm dịu, không hao tài nguyên
-  ambientIntervalId = setInterval(renderAmbientFrame, 70);
+  // Máy yếu hoặc chế độ mượt: cập nhật 7fps (140ms) cực nhẹ; Máy mạnh: 14fps (70ms)
+  const interval = (state.perfMode || isLowEndDevice) ? 140 : 70;
+  ambientIntervalId = setInterval(renderAmbientFrame, interval);
 }
 
 function drawCoverToAmbientCanvases(imgUrl) {
@@ -1080,7 +1152,7 @@ async function initApp() {
     openLibraryPage(initialRoute.tab || 'favorites');
   } else {
     // Luôn ưu tiên phát danh sách nhạc thịnh hành #nhacchill trước để người dùng nghe được nhạc ngay lập tức
-    await loadFeedByTag('nhacchill');
+    await loadFeedByTag('nhacchill', false, { isInitialLoad: true, history: 'replace' });
     if (state.account && state.account.username) {
       renderConnectedAccount(state.account);
     }
@@ -1132,6 +1204,28 @@ function loadLocalState() {
       dom.appLayout.classList.toggle('queue-collapsed', Boolean(state.queueCollapsed));
       setPlayMode(state.playMode, false);
     }
+
+    const savedDurationRule = localStorage.getItem(STORAGE_KEYS.DURATION_RULE);
+    if (savedDurationRule) {
+      state.durationRule = savedDurationRule;
+      if (dom.minDurationSelect) dom.minDurationSelect.value = savedDurationRule;
+    } else if (dom.minDurationSelect) {
+      state.durationRule = dom.minDurationSelect.value || 'gte_12';
+    }
+    updateDurationPillLabel();
+
+    const savedPerf = localStorage.getItem(STORAGE_KEYS.PERF_MODE);
+    if (savedPerf !== null) {
+      state.perfMode = savedPerf === 'true';
+    } else if (isLowEndDevice) {
+      state.perfMode = true;
+    }
+    applyPerformanceModeUI();
+
+    const savedSession = localStorage.getItem(STORAGE_KEYS.TIKTOK_SESSION);
+    if (savedSession && dom.tiktokSessionInput) {
+      dom.tiktokSessionInput.value = savedSession;
+    }
   } catch (err) {
     state.customTags = [...DEFAULT_CUSTOM_TAGS];
   }
@@ -1148,6 +1242,8 @@ function saveLocalState() {
       JSON.stringify([...state.seenVideoIds].slice(-180))
     );
     localStorage.setItem(STORAGE_KEYS.DOLBY, JSON.stringify(state.dolby));
+    localStorage.setItem(STORAGE_KEYS.DURATION_RULE, state.durationRule);
+    localStorage.setItem(STORAGE_KEYS.PERF_MODE, String(state.perfMode));
     localStorage.setItem(
       STORAGE_KEYS.SETTINGS,
       JSON.stringify({
@@ -1927,9 +2023,19 @@ async function openChannelProfile(usernameInput, forceRefresh = false, showGridI
         refresh: String(forceRefresh),
       });
 
-      const res = await fetch(apiUrl(`/api/account/${encodeURIComponent(cleanUser)}?${params}`), { signal: AbortSignal.timeout(6000) });
+      const res = await fetch(apiUrl(`/api/account/${encodeURIComponent(cleanUser)}?${params}`), { signal: AbortSignal.timeout(25000) });
       if (res.ok) {
         data = await res.json();
+        if (data && Array.isArray(data.videos)) {
+          // Lọc nghiêm ngặt 100% video phải cùng tác giả, tuyệt đối không bị trộn bài của kênh khác
+          const authorOnly = data.videos.filter(v => {
+            const u = (v.author?.username || v.author?.uniqueId || '').toLowerCase();
+            return u === cleanUser.toLowerCase();
+          });
+          if (authorOnly.length > 0) {
+            data.videos = authorOnly;
+          }
+        }
       }
     } catch (e) {
       console.warn('Backend kênh không phản hồi, tự động dùng TikWM client:', e.message);
@@ -2215,27 +2321,30 @@ async function getStaticCatalog() {
 
 function filterCatalog(catalog, queryOrTag) {
   if (!catalog || catalog.length === 0) return [];
+  let filtered = catalog.filter(v => matchesDurationFilter(v.video?.duration || v.duration, state.durationRule));
+  if (filtered.length === 0) filtered = catalog;
+
   const q = String(queryOrTag || '').replace(/^#/, '').trim().toLowerCase();
   if (!q || q === 'nhachaymoingay') {
-    return catalog;
+    return filtered;
   }
   if (q === 'nhacchill') {
-    const chill = catalog.filter(v => (v.hashtags || []).some(h => ['nhacchill', 'chill', 'lofi', 'acoustic'].includes(h)));
-    return chill.length > 0 ? chill : catalog;
+    const chill = filtered.filter(v => (v.hashtags || []).some(h => ['nhacchill', 'chill', 'lofi', 'acoustic'].includes(h)));
+    return chill.length > 0 ? chill : filtered;
   }
 
   // 1. Khớp theo hashtag
-  const byTag = catalog.filter(v => (v.hashtags || []).some(h => h.toLowerCase() === q || h.toLowerCase().includes(q) || q.includes(h.toLowerCase())));
+  const byTag = filtered.filter(v => (v.hashtags || []).some(h => h.toLowerCase() === q || h.toLowerCase().includes(q) || q.includes(h.toLowerCase())));
   if (byTag.length >= 3) return byTag;
 
   // 2. Khớp theo mô tả, tên bài hát, nghệ sĩ
-  const byText = catalog.filter(v => {
+  const byText = filtered.filter(v => {
     const full = ((v.desc || '') + ' ' + (v.music?.title || '') + ' ' + (v.author?.nickname || '') + ' ' + (v.author?.username || '')).toLowerCase();
     return full.includes(q);
   });
   if (byText.length > 0) return byText;
 
-  return byTag.length > 0 ? byTag : catalog;
+  return byTag.length > 0 ? byTag : filtered;
 }
 
 // ============================================================================
@@ -2254,7 +2363,8 @@ async function prefetchNextFreshBatch() {
     if (targetType === 'search') {
       const params = new URLSearchParams({
         q: targetTag,
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         refresh: 'true',
         exclude: getSeenIdsParam(120),
@@ -2271,7 +2381,8 @@ async function prefetchNextFreshBatch() {
     }
     const params = new URLSearchParams({
       tag: targetTag,
-      minDuration: String(state.minDuration),
+      minDuration: String(state.durationRule || state.minDuration),
+      durationRule: String(state.durationRule || state.minDuration),
       strictAnchors: String(state.strictAnchors),
       refresh: 'true',
       exclude: getSeenIdsParam(120),
@@ -2330,7 +2441,8 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
     try {
       const params = new URLSearchParams({
         tag: cleanTag,
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         refresh: String(forceRefresh),
         exclude: forceRefresh ? getSeenIdsParam(120) : '',
@@ -2400,15 +2512,26 @@ async function performSearch(query, forceRefresh = false) {
   const cleanQuery = query.trim();
   if (!cleanQuery) return;
 
-  // Nếu người dùng nhập @username vào ô tìm kiếm -> Mở thẳng Trang Kênh đầy đủ
-  if (cleanQuery.startsWith('@') && !cleanQuery.includes(' ')) {
-    return openChannelProfile(cleanQuery.slice(1), forceRefresh, true);
+  // 1. Nhận diện link kênh TikTok: https://www.tiktok.com/@username
+  const profileUrlMatch = cleanQuery.match(/tiktok\.com\/@([a-zA-Z0-9_.-]+)/i);
+  if (profileUrlMatch) {
+    return openChannelProfile(profileUrlMatch[1], forceRefresh, true);
   }
 
-  if (cleanQuery.startsWith('#') && !cleanQuery.includes(' ')) {
-    const tag = cleanQuery.slice(1);
-    highlightActiveTagPill(tag);
-    return loadFeedByTag(tag, forceRefresh);
+  // 2. Nhận diện người dùng gõ @username (kể cả có dấu cách thừa do gõ bàn phím di động)
+  if (cleanQuery.startsWith('@')) {
+    const rawName = cleanQuery.replace(/^@+/, '').trim().split(/\s+/)[0];
+    if (rawName) {
+      return openChannelProfile(rawName, forceRefresh, true);
+    }
+  }
+
+  if (cleanQuery.startsWith('#')) {
+    const tag = cleanQuery.replace(/^#+/, '').trim().split(/\s+/)[0];
+    if (tag) {
+      highlightActiveTagPill(tag);
+      return loadFeedByTag(tag, forceRefresh);
+    }
   }
 
   showChannelStage(false);
@@ -2429,7 +2552,8 @@ async function performSearch(query, forceRefresh = false) {
     try {
       const params = new URLSearchParams({
         q: cleanQuery,
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         refresh: String(forceRefresh),
         exclude: forceRefresh ? getSeenIdsParam(120) : '',
@@ -2515,7 +2639,8 @@ async function loadFeedByMusicId(musicId, musicTitle = '', musicAuthor = '', for
       musicId: String(musicId),
       title: musicTitle,
       author: musicAuthor,
-      minDuration: String(state.minDuration),
+      minDuration: String(state.durationRule || state.minDuration),
+      durationRule: String(state.durationRule || state.minDuration),
       strictAnchors: String(state.strictAnchors),
       refresh: String(forceRefresh),
     });
@@ -2552,7 +2677,8 @@ async function loadSmartMixFeed(appendToQueue = false) {
       const params = new URLSearchParams({
         username: '',
         tags: state.customTags.join(','),
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         exclude: getSeenIdsParam(120),
       });
@@ -2623,14 +2749,19 @@ function applyNewFeedData(data, subtitleText, opts = {}) {
   dom.queueSubtitle.textContent = `${subtitleText} (${videos.length} video)`;
 
   if (videos.length > 0) {
-    playTrackAtIndex(0, true, opts);
+    let targetIdx = 0;
+    if (opts.isInitialLoad && videos.length > 1) {
+      // Khi tải lại trang hoặc mở web lần đầu: chọn ngẫu nhiên một bài khác để không bao giờ cố định bài cũ!
+      targetIdx = Math.floor(Math.random() * Math.min(12, videos.length));
+    }
+    playTrackAtIndex(targetIdx, true, opts);
     if (!prefetchedFreshData && !isPrefetchingFresh) {
-      setTimeout(prefetchNextFreshBatch, 1200);
+      setTimeout(prefetchNextFreshBatch, 1000);
     }
   } else {
     renderQueueList();
     showErrorInQueue(
-      'Không có video nào vượt qua bộ lọc thời lượng này. Hãy bấm "🎲 Đổi loạt mới" hoặc giảm bộ lọc thời lượng xuống ≥ 12s!'
+      'Không có video nào khớp bộ lọc thời lượng này. Hãy bấm "🎲 Đổi loạt mới" hoặc chỉnh lại bộ lọc thời lượng!'
     );
   }
 }
@@ -2901,7 +3032,8 @@ async function autoFetchMoreTracksInBackground() {
     if (state.lastQueryType === 'search') {
       const params = new URLSearchParams({
         q: state.lastQueryValue,
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         refresh: 'true',
         exclude: getSeenIdsParam(120),
@@ -2915,7 +3047,8 @@ async function autoFetchMoreTracksInBackground() {
     } else if (state.lastQueryType === 'tag') {
       const params = new URLSearchParams({
         tag: state.lastQueryValue,
-        minDuration: String(state.minDuration),
+        minDuration: String(state.durationRule || state.minDuration),
+        durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
         refresh: 'true',
         exclude: getSeenIdsParam(120),
@@ -3869,7 +4002,8 @@ function bindEvents() {
 
   // Bộ lọc thời lượng & link
   dom.minDurationSelect?.addEventListener('change', () => {
-    state.minDuration = Number(dom.minDurationSelect.value);
+    state.durationRule = dom.minDurationSelect.value;
+    updateDurationPillLabel();
     saveLocalState();
     reloadCurrentFeed(false);
   });
@@ -4253,6 +4387,70 @@ function bindEvents() {
   });
   dom.shieldModal?.addEventListener('click', (e) => {
     if (e.target === dom.shieldModal) dom.shieldModal.classList.add('hidden');
+  });
+
+  // Chế độ mượt cho máy yếu / tiết kiệm pin
+  dom.btnTogglePerformanceMode?.addEventListener('click', () => {
+    state.perfMode = !state.perfMode;
+    applyPerformanceModeUI();
+    saveLocalState();
+    initAmbientLightEngine();
+    showMiniToast(state.perfMode ? '⚡ Đã bật Chế độ mượt (tiết kiệm GPU)' : '✨ Đã tắt Chế độ mượt (chất lượng cao nhất)');
+  });
+
+  // Modal phiên đăng nhập TikTok (Session Cookie)
+  dom.btnOpenSessionModal?.addEventListener('click', () => {
+    if (dom.sessionModal) {
+      const saved = localStorage.getItem(STORAGE_KEYS.TIKTOK_SESSION) || '';
+      if (dom.tiktokSessionInput) dom.tiktokSessionInput.value = saved;
+      dom.sessionModal.classList.remove('hidden');
+    }
+  });
+
+  dom.btnCloseSessionModal?.addEventListener('click', () => {
+    dom.sessionModal?.classList.add('hidden');
+  });
+
+  dom.sessionModal?.addEventListener('click', (e) => {
+    if (e.target === dom.sessionModal) dom.sessionModal.classList.add('hidden');
+  });
+
+  dom.btnSaveSessionCookie?.addEventListener('click', async () => {
+    const sessionVal = (dom.tiktokSessionInput?.value || '').trim();
+    if (!sessionVal) {
+      showMiniToast('⚠️ Vui lòng dán mã cookie sessionid từ TikTok');
+      return;
+    }
+    localStorage.setItem(STORAGE_KEYS.TIKTOK_SESSION, sessionVal);
+    try {
+      showMiniToast('🔄 Đang kích hoạt phiên đăng nhập TikTok...');
+      await fetch(apiUrl('/api/auth/tiktok-session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionid: sessionVal }),
+      });
+      dom.sessionModal?.classList.add('hidden');
+      showMiniToast('✅ Đã lưu cookie TikTok! Đang làm mới dữ liệu...');
+      reloadCurrentFeed(true);
+    } catch (_) {
+      dom.sessionModal?.classList.add('hidden');
+      showMiniToast('✅ Đã lưu mã session vào bộ nhớ cục bộ');
+      reloadCurrentFeed(true);
+    }
+  });
+
+  dom.btnClearSessionCookie?.addEventListener('click', async () => {
+    localStorage.removeItem(STORAGE_KEYS.TIKTOK_SESSION);
+    if (dom.tiktokSessionInput) dom.tiktokSessionInput.value = '';
+    try {
+      await fetch(apiUrl('/api/auth/tiktok-session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionid: '' }),
+      });
+    } catch (_) {}
+    dom.sessionModal?.classList.add('hidden');
+    showMiniToast('🗑️ Đã xóa cookie phiên đăng nhập TikTok');
   });
 
   // Phím tắt bàn phím
