@@ -241,7 +241,8 @@ const dom = {
   bottomOverlay: document.querySelector('.tt-bottom-overlay'),
   floatingControls: document.querySelector('.tt-floating-Controls'),
 
-  // Menu 3 chấm trong video, toàn màn hình, chú thích thu gọn
+  // Menu 3 chấm trong video, toàn màn hình, chú thích thu gọn & HUD xoay ngang chuẩn TikTok
+  btnTopQueueMobile: document.getElementById('btnTopQueueMobile'),
   btnVideoMoreMenu: document.getElementById('btnVideoMoreMenu'),
   videoMoreMenu: document.getElementById('videoMoreMenu'),
   menuSpeedGroup: document.getElementById('menuSpeedGroup'),
@@ -253,6 +254,31 @@ const dom = {
   btnFullscreenBar: document.getElementById('btnFullscreenBar'),
   btnLandscapeFullscreenOverlay: document.getElementById('btnLandscapeFullscreenOverlay'),
   btnCaptionMore: document.getElementById('btnCaptionMore'),
+  landscapeHud: document.getElementById('landscapeHud'),
+  btnLsBack: document.getElementById('btnLsBack'),
+  lsTitleWrap: document.getElementById('lsTitleWrap'),
+  lsTrackTitle: document.getElementById('lsTrackTitle'),
+  btnLsTitleMore: document.getElementById('btnLsTitleMore'),
+  btnLsMore: document.getElementById('btnLsMore'),
+  lsCreatorPill: document.getElementById('lsCreatorPill'),
+  lsAuthorAvatar: document.getElementById('lsAuthorAvatar'),
+  lsAuthorName: document.getElementById('lsAuthorName'),
+  btnLsCenterPlay: document.getElementById('btnLsCenterPlay'),
+  lsCurrentTime: document.getElementById('lsCurrentTime'),
+  lsDurationTime: document.getElementById('lsDurationTime'),
+  lsSeekBar: document.getElementById('lsSeekBar'),
+  btnLsFavorite: document.getElementById('btnLsFavorite'),
+  lsFavIcon: document.getElementById('lsFavIcon'),
+  lsFavText: document.getElementById('lsFavText'),
+  btnLsSaved: document.getElementById('btnLsSaved'),
+  lsSavedIcon: document.getElementById('lsSavedIcon'),
+  lsSavedText: document.getElementById('lsSavedText'),
+  btnLsSameMusic: document.getElementById('btnLsSameMusic'),
+  btnLsRefresh: document.getElementById('btnLsRefresh'),
+  btnLsDolby: document.getElementById('btnLsDolby'),
+  btnLsQueue: document.getElementById('btnLsQueue'),
+  btnLsSpeed: document.getElementById('btnLsSpeed'),
+  btnLsExit: document.getElementById('btnLsExit'),
 
   // Thư viện Yêu thích / Đã lưu / Đã nghe
   libraryView: document.getElementById('libraryView'),
@@ -1581,15 +1607,29 @@ function playFromLibraryList(tab, index = 0, shuffle = false) {
 // ============================================================================
 // TOÀN MÀN HÌNH · MENU 3 CHẤM · RESPONSIVE PANELS · TOAST
 // ============================================================================
+let lsHudTimer = null;
+function revealLandscapeHud(autoHide = true) {
+  dom.landscapeHud?.classList.remove('hud-hidden');
+  clearTimeout(lsHudTimer);
+  if (autoHide && dom.videoPlayer && !dom.videoPlayer.paused) {
+    lsHudTimer = setTimeout(() => {
+      if (dom.videoPlayer && !dom.videoPlayer.paused && dom.videoMoreMenu?.classList.contains('hidden')) {
+        dom.landscapeHud?.classList.add('hud-hidden');
+      }
+    }, 3400);
+  }
+}
+
 function enterLandscapeFullscreen() {
   document.body.classList.add('landscape-fullscreen-active');
+  revealLandscapeHud(true);
   try {
     if (window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function') {
       window.AndroidBridge.setLandscape(true);
     }
   } catch (_) {}
 
-  const target = dom.mediaStage || document.documentElement;
+  const target = document.documentElement;
   if (!document.fullscreenElement) {
     if (target.requestFullscreen) {
       target.requestFullscreen().then(() => {
@@ -1611,6 +1651,8 @@ function enterLandscapeFullscreen() {
 
 function exitLandscapeFullscreen() {
   document.body.classList.remove('landscape-fullscreen-active');
+  clearTimeout(lsHudTimer);
+  dom.landscapeHud?.classList.remove('hud-hidden');
   try {
     if (window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function') {
       window.AndroidBridge.setLandscape(false);
@@ -2542,6 +2584,22 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   dom.trackStatsText.textContent = `• ${formatCompactNumber(track.stats?.plays || track.stats?.playCount || 0)} lượt xem`;
   if (dom.btnOpenOriginalTikTok) dom.btnOpenOriginalTikTok.href = track.tiktokUrl || '#';
 
+  // Cập nhật thông tin trên giao diện phóng to xoay ngang (Landscape HUD chuẩn TikTok)
+  if (dom.lsTrackTitle) {
+    dom.lsTrackTitle.textContent = track.desc || track.music?.title || 'Video âm nhạc sạch không quảng cáo';
+  }
+  dom.lsTitleWrap?.classList.remove('expanded');
+  if (dom.btnLsTitleMore) {
+    dom.btnLsTitleMore.textContent = 'thêm';
+    dom.btnLsTitleMore.classList.toggle('hidden', (track.desc || '').length <= 42);
+  }
+  if (dom.lsAuthorAvatar) {
+    dom.lsAuthorAvatar.src = track.author?.avatar || 'https://placehold.co/80x80/181824/fe2c55?text=TT';
+  }
+  if (dom.lsAuthorName) {
+    dom.lsAuthorName.textContent = track.author?.nickname || track.author?.username || 'Creator';
+  }
+
   const coverUrl =
     track.music?.cover ||
     track.video?.cover ||
@@ -2716,10 +2774,14 @@ function togglePlayPause() {
 function updatePlayingUI(isPlaying) {
   document.body.classList.toggle('is-playing', Boolean(isPlaying));
   dom.btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
+  if (dom.btnLsCenterPlay) dom.btnLsCenterPlay.textContent = isPlaying ? '⏸' : '▶';
   dom.vinylDisc.classList.toggle('spinning', isPlaying);
   dom.audioEqualizer.classList.toggle('paused', !isPlaying);
   if (dom.railSpinningDisc) {
     dom.railSpinningDisc.classList.toggle('playing', isPlaying);
+  }
+  if (document.body.classList.contains('landscape-fullscreen-active')) {
+    revealLandscapeHud(Boolean(isPlaying));
   }
 }
 
@@ -2885,11 +2947,17 @@ function updateTrackActionButtonsUI(trackId) {
   if (dom.favIcon) dom.favIcon.textContent = isFav ? '❤️' : '🤍';
   dom.btnToggleFavorite?.classList.toggle('favorited', isFav);
   if (dom.railFavLabel) dom.railFavLabel.textContent = isFav ? 'Đã thích' : 'Yêu thích';
+  if (dom.lsFavIcon) dom.lsFavIcon.textContent = isFav ? '❤️' : '🤍';
+  if (dom.lsFavText) dom.lsFavText.textContent = isFav ? 'Đã thích' : 'Yêu thích';
+  dom.btnLsFavorite?.classList.toggle('active', isFav);
 
   const isSaved = state.savedTracks.some((s) => String(s.id) === targetId);
   if (dom.savedIcon) dom.savedIcon.textContent = isSaved ? '🔖' : '📑';
   dom.btnToggleSaved?.classList.toggle('active', isSaved);
   if (dom.railSavedLabel) dom.railSavedLabel.textContent = isSaved ? 'Đã lưu' : 'Lưu nhạc';
+  if (dom.lsSavedIcon) dom.lsSavedIcon.textContent = isSaved ? '🔖' : '📑';
+  if (dom.lsSavedText) dom.lsSavedText.textContent = isSaved ? 'Đã lưu' : 'Lưu nhạc';
+  dom.btnLsSaved?.classList.toggle('active', isSaved);
 }
 
 function updateBadges() {
@@ -3050,7 +3118,8 @@ function bindEvents() {
       dom.videoMoreMenu &&
       !dom.videoMoreMenu.classList.contains('hidden') &&
       !dom.videoMoreMenu.contains(e.target) &&
-      e.target !== dom.btnVideoMoreMenu
+      e.target !== dom.btnVideoMoreMenu &&
+      e.target !== dom.btnLsMore
     ) {
       dom.videoMoreMenu.classList.add('hidden');
       dom.btnVideoMoreMenu?.classList.remove('active');
@@ -3063,6 +3132,7 @@ function bindEvents() {
       e.stopPropagation();
       const rate = parseFloat(btn.dataset.speed) || 1.0;
       dom.videoPlayer.playbackRate = rate;
+      if (dom.btnLsSpeed) dom.btnLsSpeed.textContent = `${rate}x`;
       dom.menuSpeedGroup.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
       showMiniToast(`⏱️ Tốc độ phát: ${rate}x`);
     });
@@ -3316,9 +3386,10 @@ function bindEvents() {
     saveLocalState();
   });
 
-  // Ẩn / Hiện danh sách phát tiếp theo bên phải (hỗ trợ cả màn hình nhỏ & lớn)
-  dom.btnToggleQueueDrawer?.addEventListener('click', () => {
-    if (isNarrowLayout()) {
+  // Ẩn / Hiện danh sách phát tiếp theo bên phải (hỗ trợ cả màn hình nhỏ & lớn + nút icon nhỏ góc trên điện thoại + nút trong Landscape HUD)
+  const toggleQueueDrawerHandler = (e) => {
+    if (e) e.stopPropagation();
+    if (isNarrowLayout() || document.body.classList.contains('landscape-fullscreen-active')) {
       document.body.classList.toggle('queue-overlay-open');
       document.body.classList.remove('sidebar-open');
       return;
@@ -3326,6 +3397,97 @@ function bindEvents() {
     state.queueCollapsed = !state.queueCollapsed;
     dom.appLayout.classList.toggle('queue-collapsed', state.queueCollapsed);
     saveLocalState();
+  };
+  dom.btnToggleQueueDrawer?.addEventListener('click', toggleQueueDrawerHandler);
+  dom.btnTopQueueMobile?.addEventListener('click', toggleQueueDrawerHandler);
+  dom.btnLsQueue?.addEventListener('click', toggleQueueDrawerHandler);
+
+  // Các nút trên giao diện Phóng to Xoay ngang 16:9 chuẩn TikTok (Landscape HUD)
+  dom.btnLsBack?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exitLandscapeFullscreen();
+  });
+  dom.btnLsExit?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exitLandscapeFullscreen();
+  });
+  dom.btnLsTitleMore?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const expanded = dom.lsTitleWrap?.classList.toggle('expanded');
+    dom.btnLsTitleMore.textContent = expanded ? 'ẩn bớt' : 'thêm';
+    revealLandscapeHud(true);
+  });
+  dom.btnLsMore?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dom.videoMoreMenu?.classList.toggle('hidden');
+    revealLandscapeHud(dom.videoMoreMenu?.classList.contains('hidden'));
+  });
+  dom.lsCreatorPill?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const track = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+    const uname = track?.author?.username || track?.author?.uniqueId;
+    if (uname) {
+      exitLandscapeFullscreen();
+      openChannelProfile(uname, false, true);
+    }
+  });
+  dom.btnLsCenterPlay?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePlayPause();
+    revealLandscapeHud(true);
+  });
+  dom.btnLsFavorite?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const track = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+    if (track) toggleFavoriteTrack(track);
+    revealLandscapeHud(true);
+  });
+  dom.btnLsSaved?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const track = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+    if (track) toggleSavedTrack(track);
+    revealLandscapeHud(true);
+  });
+  dom.btnLsSameMusic?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const track = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+    if (track && track.music?.id) {
+      loadFeedByMusicId(track.music.id, track.music.title, track.music.author);
+    }
+    revealLandscapeHud(true);
+  });
+  dom.btnLsRefresh?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showMiniToast('🎲 Đang nạp loạt video mới...');
+    reloadCurrentFeed(true);
+    revealLandscapeHud(true);
+  });
+  dom.btnLsDolby?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDolbyPopover();
+    revealLandscapeHud(false);
+  });
+  const SPEED_CYCLE = [1, 1.25, 1.5, 2, 0.75];
+  dom.btnLsSpeed?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const curRate = Number(dom.videoPlayer.playbackRate) || 1;
+    const idx = SPEED_CYCLE.indexOf(curRate);
+    const nextRate = SPEED_CYCLE[(idx + 1) % SPEED_CYCLE.length];
+    dom.videoPlayer.playbackRate = nextRate;
+    dom.btnLsSpeed.textContent = `${nextRate}x`;
+    dom.menuSpeedGroup?.querySelectorAll('button[data-speed]').forEach((b) => {
+      b.classList.toggle('active', parseFloat(b.dataset.speed) === nextRate);
+    });
+    showMiniToast(`⏱️ Tốc độ phát: ${nextRate}x`);
+    revealLandscapeHud(true);
+  });
+  dom.lsSeekBar?.addEventListener('input', (e) => {
+    e.stopPropagation();
+    const dur = dom.videoPlayer.duration || 0;
+    if (dur > 0 && Number.isFinite(dur)) {
+      dom.videoPlayer.currentTime = (Number(dom.lsSeekBar.value) / 100) * dur;
+    }
+    revealLandscapeHud(true);
   });
 
   // Bộ lọc thời lượng & link
@@ -3354,7 +3516,23 @@ function bindEvents() {
 
   // Trình phát Video / Audio & Tự động nhận diện tỷ lệ thực tế của luồng video (16:9 vs 9:16)
   dom.btnPlayPause?.addEventListener('click', togglePlayPause);
-  dom.videoPlayer?.addEventListener('click', togglePlayPause);
+  dom.videoPlayer?.addEventListener('click', () => {
+    // Khi đang ở chế độ phóng to xoay ngang (Landscape HUD): chạm vào video sẽ ẩn/hiện thanh điều khiển giống TikTok
+    if (
+      document.body.classList.contains('landscape-fullscreen-active') ||
+      window.matchMedia('(max-height: 560px)').matches
+    ) {
+      const isHidden = dom.landscapeHud?.classList.contains('hud-hidden');
+      if (isHidden) {
+        revealLandscapeHud(true);
+      } else {
+        clearTimeout(lsHudTimer);
+        dom.landscapeHud?.classList.add('hud-hidden');
+      }
+      return;
+    }
+    togglePlayPause();
+  });
   dom.vinylContainer?.addEventListener('click', togglePlayPause);
 
   dom.videoPlayer?.addEventListener('loadedmetadata', () => {
@@ -3386,10 +3564,16 @@ function bindEvents() {
   dom.videoPlayer?.addEventListener('timeupdate', () => {
     const cur = dom.videoPlayer.currentTime || 0;
     const dur = dom.videoPlayer.duration || 0;
-    dom.currentTimeText.textContent = formatTime(cur);
+    const curStr = formatTime(cur);
+    dom.currentTimeText.textContent = curStr;
+    if (dom.lsCurrentTime) dom.lsCurrentTime.textContent = curStr;
     if (dur > 0 && Number.isFinite(dur)) {
-      dom.durationTimeText.textContent = formatTime(dur);
-      dom.seekBar.value = String((cur / dur) * 100);
+      const durStr = formatTime(dur);
+      const pct = String((cur / dur) * 100);
+      dom.durationTimeText.textContent = durStr;
+      dom.seekBar.value = pct;
+      if (dom.lsDurationTime) dom.lsDurationTime.textContent = durStr;
+      if (dom.lsSeekBar) dom.lsSeekBar.value = pct;
     }
   });
 

@@ -27,3 +27,5 @@ Thumbs.db
 # Temp & Scratch
 scratch/
 .system_generated/
+.env
+.env.*
