@@ -704,31 +704,31 @@ const dolbyEngine = {
     const reverbBase = Number(state.dolby.reverb ?? presetRef.reverb) || 0.25;
 
     // 1. Cấu hình đặc trưng riêng cho từng Preset
-    const punchGain = presetRef.punch !== undefined ? (bass * 0.72) : (bass * 0.55);
+    const punchGain = presetRef.punch !== undefined ? presetRef.punch * (bass / (presetRef.bass || 8.5)) : bass * 0.82;
     const mudFreq = presetRef.mudFreq || 310;
-    const mudGain = presetRef.mudGain ?? -3.2;
-    const vocalFreq = presetRef.vocalFreq || 3100;
-    const itdDelay = presetRef.itdDelay || 0.0007;
+    const mudGain = presetRef.mudGain ?? -3.5;
+    const vocalFreq = presetRef.vocalFreq || 3000;
+    const itdDelay = presetRef.itdDelay || 0.0008;
 
-    this.subBassFilter.gain.setTargetAtTime(bass, now, 0.03);
-    this.punchBassFilter.gain.setTargetAtTime(punchGain, now, 0.03);
+    this.subBassFilter.gain.setTargetAtTime(bass, now, 0.025);
+    this.punchBassFilter.gain.setTargetAtTime(punchGain, now, 0.025);
 
-    this.mudCutFilter.frequency.setTargetAtTime(mudFreq, now, 0.03);
-    this.mudCutFilter.gain.setTargetAtTime(mudGain, now, 0.03);
+    this.mudCutFilter.frequency.setTargetAtTime(mudFreq, now, 0.025);
+    this.mudCutFilter.gain.setTargetAtTime(mudGain, now, 0.025);
 
-    this.vocalFilter.frequency.setTargetAtTime(vocalFreq, now, 0.03);
-    this.vocalFilter.gain.setTargetAtTime(mid, now, 0.03);
+    this.vocalFilter.frequency.setTargetAtTime(vocalFreq, now, 0.025);
+    this.vocalFilter.gain.setTargetAtTime(mid, now, 0.025);
 
     // Chế độ Lofi hoặc kéo Treble âm sâu (< -5dB) sẽ bật bộ lọc Lowpass (cắt chói hoàn toàn như đĩa than)
     if (state.dolby.preset === 'lofi' || treble <= -5.5) {
       this.airFilter.type = 'lowpass';
-      const cutoff = Math.max(1900, Math.min(4800, 3400 + (treble + 6) * 220));
-      this.airFilter.frequency.setTargetAtTime(cutoff, now, 0.03);
-      this.airFilter.Q.setTargetAtTime(0.85, now, 0.03);
+      const cutoff = Math.max(1550, Math.min(3800, 2650 + (treble + 7) * 180));
+      this.airFilter.frequency.setTargetAtTime(cutoff, now, 0.025);
+      this.airFilter.Q.setTargetAtTime(1.1, now, 0.025);
     } else {
       this.airFilter.type = 'highshelf';
-      this.airFilter.frequency.setTargetAtTime(presetRef.airFreq || 10200, now, 0.03);
-      this.airFilter.gain.setTargetAtTime(treble, now, 0.03);
+      this.airFilter.frequency.setTargetAtTime(presetRef.airFreq || 9500, now, 0.025);
+      this.airFilter.gain.setTargetAtTime(treble, now, 0.025);
     }
 
     // 2. Mở rộng âm trường 3D trên tai nghe có dây (Out-of-phase binaural crossfeed)
@@ -854,6 +854,7 @@ function selectDolbyPreset(presetKey) {
   dolbyEngine.init();
   syncDolbyUI();
   saveLocalState();
+  showMiniToast(preset.enabled ? `🎧 Đã bật chế độ âm thanh: ${preset.name}` : '🔇 Đã tắt hiệu ứng — Âm thanh gốc');
 }
 
 // ============================================================================
@@ -1434,6 +1435,15 @@ function restoreSnapshot(snap) {
 }
 
 function handlePopState(e) {
+  // Nếu đang ở chế độ phóng to xoay ngang 16:9, thao tác Back sẽ chỉ thoát phóng to ngang mà KHÔNG nhảy lùi về video trước!
+  if (document.body.classList.contains('landscape-fullscreen-active')) {
+    exitLandscapeFullscreen();
+    if (state.currentTrack) {
+      pushRoute({ page: 'player', trackId: state.currentTrack.id }, 'push');
+    }
+    return;
+  }
+
   const st = e.state || parseHashRoute(location.hash);
   const snap = st.snap ? nav.snapshots.get(st.snap) : null;
 
@@ -2166,9 +2176,29 @@ let isPrefetchingFresh = false;
 async function prefetchNextFreshBatch() {
   if (isPrefetchingFresh) return;
   isPrefetchingFresh = true;
+  const targetTag = state.lastQueryValue || 'nhacchill';
+  const targetType = state.lastQueryType || 'tag';
   try {
+    if (targetType === 'search') {
+      const params = new URLSearchParams({
+        q: targetTag,
+        minDuration: String(state.minDuration),
+        strictAnchors: String(state.strictAnchors),
+        refresh: 'true',
+        exclude: getSeenIdsParam(120),
+      });
+      const res = await fetch(apiUrl(`/api/search?${params}`), { signal: AbortSignal.timeout(15000) });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.videos) && json.videos.length > 0) {
+          json._forKey = `search:${targetTag.toLowerCase()}`;
+          prefetchedFreshData = json;
+        }
+      }
+      return;
+    }
     const params = new URLSearchParams({
-      tag: state.lastQueryValue || 'nhacchill',
+      tag: targetTag,
       minDuration: String(state.minDuration),
       strictAnchors: String(state.strictAnchors),
       refresh: 'true',
@@ -2178,6 +2208,7 @@ async function prefetchNextFreshBatch() {
     if (res.ok) {
       const json = await res.json();
       if (json && Array.isArray(json.videos) && json.videos.length > 0) {
+        json._forKey = `tag:${targetTag.toLowerCase()}`;
         prefetchedFreshData = json;
       }
     }
@@ -2191,6 +2222,10 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
   const cleanTag = tag.replace(/^#/, '').trim();
   if (!cleanTag) return;
 
+  if (state.lastQueryType !== 'tag' || state.lastQueryValue.toLowerCase() !== cleanTag.toLowerCase()) {
+    prefetchedFreshData = null;
+  }
+
   showStage('player');
   state.currentView = 'discover';
   state.lastQueryType = 'tag';
@@ -2200,11 +2235,17 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
   dom.queueTitle.textContent = `Tiếp theo: #${cleanTag}`;
   dom.queueSubtitle.textContent = `Đang tải danh sách video sạch cho #${cleanTag}...`;
 
-  // Nếu người dùng bấm "Đổi loạt mới" và đã có sẵn gói dữ liệu cào trước trong RAM -> hiển thị tức thì 0ms!
-  if (forceRefresh && prefetchedFreshData && Array.isArray(prefetchedFreshData.videos) && prefetchedFreshData.videos.length > 0) {
+  // Nếu người dùng bấm "Đổi loạt mới" và đã có sẵn gói dữ liệu cào trước đúng chủ đề trong RAM -> hiển thị tức thì 0ms!
+  if (
+    forceRefresh &&
+    prefetchedFreshData &&
+    prefetchedFreshData._forKey === `tag:${cleanTag.toLowerCase()}` &&
+    Array.isArray(prefetchedFreshData.videos) &&
+    prefetchedFreshData.videos.length > 0
+  ) {
     const readyData = prefetchedFreshData;
     prefetchedFreshData = null;
-    showMiniToast(`⚡ Đã nạp tức thì ${readyData.freshCount || readyData.videos.length} video mới từ TikTok!`);
+    showMiniToast(`⚡ Đã nạp tức thì ${readyData.freshCount || readyData.videos.length} video mới cho #${cleanTag}!`);
     applyNewFeedData(readyData, `Danh sách video #${cleanTag}`, opts);
     setTimeout(prefetchNextFreshBatch, 300);
     return;
@@ -2643,15 +2684,12 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   // Render danh sách video tiếp theo ở cột phải
   renderQueueList();
 
-  // Luôn ưu tiên định tuyến qua /api/stream/:id để tự động làm mới link CDN hết hạn (TikWM POST / Mobile Edge)
+  // Tối ưu tốc độ phát tức thì (< 0.15s) trên Điện thoại & Máy tính:
+  // Ưu tiên phát thẳng từ cụm CDN Singapore (directPlayUrl có hỗ trợ CORS *) nếu vừa mới cào (< 2 giờ),
+  // tự động chuyển sang /api/stream/:id ngay lập tức nếu link trực tiếp hết hạn!
   track._retryStage = 0;
   const modeType = state.playMode === 'audio' ? 'audio' : 'video';
-  let streamUrl = track.id
-    ? apiUrl(`/api/stream/${encodeURIComponent(track.id)}?type=${modeType}`)
-    : (track.video?.streamUrl || track.streamVideoUrl || track.streamAudioUrl);
-  if (streamUrl && streamUrl.startsWith('/api/')) {
-    streamUrl = apiUrl(streamUrl);
-  }
+  let streamUrl = resolveFastStreamUrl(track, modeType);
 
   if (streamUrl) {
     setLoadingState(true);
@@ -2668,6 +2706,7 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
             updatePlayingUI(true);
             dolbyEngine.init();
             dolbyEngine.applyCurrentSettings();
+            preloadNextTracksInQueue(index);
           })
           .catch(() => {
             setLoadingState(false);
@@ -2677,6 +2716,7 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
     } else {
       setLoadingState(false);
       updatePlayingUI(false);
+      preloadNextTracksInQueue(index);
     }
   }
 
@@ -2690,6 +2730,92 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   ) {
     autoFetchMoreTracksInBackground();
   }
+}
+
+function isDirectUrlFresh(url, fetchedAt = 0) {
+  if (!url || typeof url !== 'string' || !url.startsWith('https://')) return false;
+  if (url.includes('webapp-prime.tiktok.com')) return false;
+  const expMatch = url.match(/[?&](?:expire|x-expires)=(\d{10})\b/i);
+  if (expMatch) {
+    const expSec = Number(expMatch[1]);
+    if (expSec * 1000 <= Date.now() + 180000) return false;
+  } else if (fetchedAt && Date.now() - fetchedAt > 2 * 60 * 60 * 1000) {
+    return false;
+  }
+  return (
+    url.includes('tiktokcdn.com') ||
+    url.includes('tikwm.com') ||
+    url.includes('tikcdn.io') ||
+    url.includes('akamaized.net')
+  );
+}
+
+function resolveFastStreamUrl(track, modeType = 'video') {
+  if (!track) return '';
+  if (modeType === 'video') {
+    const directCandidate =
+      track.directPlayUrl ||
+      (track.video?.streamUrl && track.video.streamUrl.startsWith('https://') ? track.video.streamUrl : '');
+    if (isDirectUrlFresh(directCandidate, track.directUrlFetchedAt)) {
+      return directCandidate;
+    }
+  } else if (modeType === 'audio') {
+    if (isDirectUrlFresh(track.directAudioUrl, track.directUrlFetchedAt)) {
+      return track.directAudioUrl;
+    }
+  }
+
+  let streamUrl = track.id
+    ? apiUrl(`/api/stream/${encodeURIComponent(track.id)}?type=${modeType}`)
+    : (track.video?.streamUrl || track.streamVideoUrl || track.streamAudioUrl || '');
+  if (streamUrl && streamUrl.startsWith('/api/')) {
+    streamUrl = apiUrl(streamUrl);
+  }
+  return streamUrl;
+}
+
+// Bộ nạp trước thông minh (Preloader) cho 2 bài tiếp theo giúp vuốt chuyển bài trên điện thoại mượt 0ms
+let _preloadVideoEl = null;
+const _prewarmedTrackIds = new Set();
+
+function preloadNextTracksInQueue(currentIndex) {
+  const activeList = getActiveListForCurrentView();
+  if (!activeList || !activeList.length) return;
+
+  const nextTrack1 = activeList[currentIndex + 1];
+  const nextTrack2 = activeList[currentIndex + 2];
+
+  if (nextTrack1) {
+    const url1 = resolveFastStreamUrl(nextTrack1, state.playMode === 'audio' ? 'audio' : 'video');
+    if (url1) {
+      if (!_preloadVideoEl) {
+        _preloadVideoEl = document.createElement('video');
+        _preloadVideoEl.preload = 'auto';
+        _preloadVideoEl.muted = true;
+        _preloadVideoEl.playsInline = true;
+        _preloadVideoEl.crossOrigin = 'anonymous';
+        _preloadVideoEl.style.display = 'none';
+        document.body.appendChild(_preloadVideoEl);
+      }
+      if (_preloadVideoEl.src !== url1) {
+        _preloadVideoEl.src = url1;
+        _preloadVideoEl.load();
+      }
+    }
+  }
+
+  [nextTrack1, nextTrack2].forEach((t) => {
+    if (!t || !t.id || _prewarmedTrackIds.has(String(t.id))) return;
+    _prewarmedTrackIds.add(String(t.id));
+    const u = resolveFastStreamUrl(t, 'video');
+    if (u) {
+      fetch(u, {
+        method: 'GET',
+        headers: { Range: 'bytes=0-393215' },
+        mode: 'cors',
+      }).catch(() => {});
+    }
+  });
 }
 
 async function autoFetchMoreTracksInBackground() {
@@ -2754,11 +2880,22 @@ function playNextTrack(fromAutoScroll = false) {
   }
 }
 
-function playPrevTrack() {
+function playPrevTrack(fromPullDown = false) {
   const activeList = getActiveListForCurrentView();
   if (!activeList.length) return;
-  const prevIdx = (state.currentIndex - 1 + activeList.length) % activeList.length;
-  playTrackAtIndex(prevIdx);
+
+  // Khi đang ở video đầu tiên (index <= 0): tuyệt đối KHÔNG vòng ngược về cuối danh sách (tránh nhảy sang video ngoài chủ đề)!
+  if (state.currentIndex <= 0) {
+    if (fromPullDown && state.currentView === 'discover' && state.lastQueryType !== 'library') {
+      showMiniToast('🔄 Đang tải loạt video mới cho chủ đề hiện tại...');
+      reloadCurrentFeed(true);
+    } else {
+      showMiniToast('⏮️ Bạn đang ở video đầu tiên — Kéo xuống để tải loạt video mới!');
+    }
+    return;
+  }
+
+  playTrackAtIndex(state.currentIndex - 1);
 }
 
 function togglePlayPause() {
@@ -3157,13 +3294,8 @@ function bindEvents() {
     toggleFullscreen();
   });
   document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement && document.body.classList.contains('landscape-fullscreen-active')) {
-      document.body.classList.remove('landscape-fullscreen-active');
-      try {
-        window.AndroidBridge?.setLandscape?.(false);
-        screen.orientation?.unlock?.();
-      } catch (_) {}
-    }
+    // Giữ nguyên chế độ landscape-fullscreen-active trên điện thoại kể cả khi người dùng kéo thanh thông báo xuống,
+    // chỉ thoát khi người dùng chủ động bấm nút Thoát (< hoặc 🗗)!
     syncFullscreenUI();
   });
 
@@ -3241,15 +3373,30 @@ function bindEvents() {
 
   const onGlobalTouchStart = (e) => {
     if (state.activeStage !== 'player') return;
-    // Bỏ qua nếu chạm vào sidebar, playlist, dolby panel, modal, thanh tua hoặc các nút bấm
+    // Khi đang phóng to xoay ngang 16:9 (Landscape Fullscreen): tắt vuốt dọc chuyển bài để khi kéo thanh thông báo điện thoại không bị nhảy lùi bài!
+    if (
+      document.body.classList.contains('landscape-fullscreen-active') ||
+      Boolean(document.fullscreenElement) ||
+      window.matchMedia('(max-height: 560px)').matches
+    ) {
+      isTouchSwiping = false;
+      return;
+    }
+    // Bỏ qua nếu chạm vào sidebar, playlist, dolby panel, modal, menu 3 chấm, thanh tua hoặc các nút bấm
     if (
       e.target.closest(
-        '.tt-sidebar, .tt-queue-drawer, .dolby-popover, .modal-backdrop, .tt-player-bar, .tt-seekbar, .tt-vol-slider, .rail-btn, .tt-more-menu, .tt-more-btn, button, input, select, textarea'
+        '.tt-sidebar, .tt-queue-drawer, .dolby-popover, .modal-backdrop, .tt-player-bar, .tt-seekbar, .tt-vol-slider, .rail-btn, .tt-more-menu, .tt-more-btn, .tt-landscape-hud, button, input, select, textarea'
       )
     ) {
+      isTouchSwiping = false;
       return;
     }
     const touch = e.touches[0];
+    // Bỏ qua hoàn toàn nếu người dùng vuốt từ mép trên cùng (kéo thanh thông báo điện thoại) hoặc mép dưới cùng (thanh điều hướng hệ thống)
+    if (touch.clientY < 68 || touch.clientY > window.innerHeight - 48) {
+      isTouchSwiping = false;
+      return;
+    }
     touchStartY = touch.clientY;
     touchStartX = touch.clientX;
     touchStartTime = Date.now();
@@ -3258,6 +3405,10 @@ function bindEvents() {
 
   const onGlobalTouchMove = (e) => {
     if (!isTouchSwiping || state.activeStage !== 'player') return;
+    if (document.body.classList.contains('landscape-fullscreen-active')) {
+      isTouchSwiping = false;
+      return;
+    }
     const touch = e.touches[0];
     const diffY = touch.clientY - touchStartY;
     const diffX = touch.clientX - touchStartX;
@@ -3271,6 +3422,7 @@ function bindEvents() {
   const onGlobalTouchEnd = (e) => {
     if (!isTouchSwiping || state.activeStage !== 'player') return;
     isTouchSwiping = false;
+    if (document.body.classList.contains('landscape-fullscreen-active')) return;
 
     const touch = e.changedTouches[0];
     const diffY = touch.clientY - touchStartY;
@@ -3283,8 +3435,8 @@ function bindEvents() {
         // Vuốt LÊN (Swipe Up): Xem video tiếp theo (giống hệt thao tác TikTok / Reels)
         playNextTrack(false);
       } else {
-        // Vuốt XUỐNG (Swipe Down): Quay lại video trước đó
-        playPrevTrack();
+        // Vuốt XUỐNG (Swipe Down): Quay lại video trước đó (hoặc nếu ở video đầu tiên thì tải loạt video mới!)
+        playPrevTrack(true);
       }
     }
   };

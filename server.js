@@ -179,6 +179,9 @@ function transformTikWMItem(v) {
     isLandscape: false,
     isPinned: Boolean(v.is_top),
     cover: coverUrl,
+    directPlayUrl: playUrl,
+    directAudioUrl: audioUrl,
+    directUrlFetchedAt: Date.now(),
     streamVideoUrl: `/api/stream/${id}?type=video`,
     streamAudioUrl: `/api/stream/${id}?type=audio`,
     tiktokUrl: `https://www.tiktok.com/@${username}/video/${id}`,
@@ -1380,7 +1383,9 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
     if (matched.length === 0) {
       matched = seedList.filter(v => (v.desc || '').toLowerCase().includes(q) || (v.music?.title || '').toLowerCase().includes(q));
     }
-    if (matched.length === 0) matched = seedList;
+    if (matched.length === 0 && liveCleanVideos.length === 0) {
+      matched = seedList;
+    }
 
     // Chỉ đăng ký vào mediaRegistry nếu là link gốc http (không ghi đè link /api/stream/:id của liveCleanVideos!)
     matched.forEach(v => {
@@ -2186,8 +2191,13 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
         excludeSet.add(String(v.id));
         return true;
       });
-      const extraFresh = (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
-      const videos = [...cleanTagVideos, ...extraFresh, ...(batchData.seed || [])].slice(0, 30);
+      const extraFresh = cleanTagVideos.length >= 5
+        ? []
+        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
+      const seedFallback = (cleanTagVideos.length + extraFresh.length) >= 5
+        ? []
+        : (batchData.seed || []);
+      const videos = [...cleanTagVideos, ...extraFresh, ...seedFallback].slice(0, 30);
       const freshTotal = cleanTagVideos.length + extraFresh.length;
       const stats = {
         totalScanned: videos.length,
@@ -2347,8 +2357,13 @@ app.get('/api/search', async (req, res) => {
         excludeSet.add(String(v.id));
         return true;
       });
-      const extraFresh = (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
-      const videos = [...cleanQueryVideos, ...extraFresh, ...(batchData.seed || [])].slice(0, 30);
+      const extraFresh = cleanQueryVideos.length >= 5
+        ? []
+        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
+      const seedFallback = (cleanQueryVideos.length + extraFresh.length) >= 5
+        ? []
+        : (batchData.seed || []);
+      const videos = [...cleanQueryVideos, ...extraFresh, ...seedFallback].slice(0, 30);
       const freshTotal = cleanQueryVideos.length + extraFresh.length;
       const stats = {
         totalScanned: videos.length,
@@ -2548,6 +2563,9 @@ app.get('/api/stream/:id', async (req, res) => {
     });
     if (!res.getHeader('accept-ranges')) {
       res.setHeader('Accept-Ranges', 'bytes');
+    }
+    if (!res.getHeader('cache-control')) {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
     }
 
     upstream.data.on('error', () => {
