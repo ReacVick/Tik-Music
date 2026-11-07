@@ -2181,17 +2181,26 @@ async function performSearch(query, forceRefresh = false) {
         exclude: forceRefresh ? getSeenIdsParam(120) : '',
       });
 
-      const res = await fetch(apiUrl(`/api/search?${params}`), { signal: AbortSignal.timeout(6000) });
+      if (forceRefresh) showMiniToast('🎲 Đang cào loạt video mới từ TikTok...');
+      const res = await fetch(apiUrl(`/api/search?${params}`), { signal: AbortSignal.timeout(forceRefresh ? 30000 : 10000) });
       if (res.ok) {
         data = await res.json();
+        if (forceRefresh && data.mode === 'fresh') {
+          showMiniToast(`✅ ${data.freshCount || 0} video mới vừa cào từ TikTok`);
+        }
       }
     } catch (e) {
-      console.warn('Backend search chậm, chuyển sang TikWM client:', e.message);
+      console.warn('Backend search chậm, chuyển sang kho dự phòng:', e.message);
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
-      const matched = filterCatalog(catalog, cleanQuery);
+      let matched = filterCatalog(catalog, cleanQuery);
+      if (forceRefresh) {
+        const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
+        matched = (unseen.length >= 8 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
+        showMiniToast('⚠️ Server đang bận, tạm dùng kho dự phòng');
+      }
       if (matched.length > 0) {
         data = {
           query: cleanQuery,
@@ -2294,9 +2303,13 @@ async function loadSmartMixFeed(appendToQueue = false) {
         exclude: getSeenIdsParam(120),
       });
 
-      const res = await fetch(apiUrl(`/api/feed/smart-mix?${params}`), { signal: AbortSignal.timeout(6000) });
+      if (!appendToQueue) showMiniToast('🎲 Đang trộn loạt video mới từ TikTok...');
+      const res = await fetch(apiUrl(`/api/feed/smart-mix?${params}`), { signal: AbortSignal.timeout(25000) });
       if (res.ok) {
         data = await res.json();
+        if (!appendToQueue && data.mode === 'fresh') {
+          showMiniToast(`✅ ${data.freshCount || 0} video mới vừa cào từ TikTok`);
+        }
       }
     } catch (e) {
       console.warn('Backend mix chậm, trộn bằng client:', e.message);
@@ -2305,7 +2318,9 @@ async function loadSmartMixFeed(appendToQueue = false) {
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
       if (catalog && catalog.length > 0) {
-        const shuffled = [...catalog].sort(() => 0.5 - Math.random()).slice(0, 30);
+        const unseen = catalog.filter((v) => !state.seenVideoIds.has(String(v.id)));
+        const pool = unseen.length >= 10 ? unseen : catalog;
+        const shuffled = [...pool].sort(() => 0.5 - Math.random()).slice(0, 30);
         data = {
           sourcesUsed: ['#smartmix', '#nhacchill', '#remix'],
           videos: shuffled,

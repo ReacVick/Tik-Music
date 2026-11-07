@@ -2111,11 +2111,26 @@ app.get(['/api/smart-mix', '/api/feed/smart-mix'], async (req, res) => {
       });
     }
 
-    const data = await fetchSmartMix(tags, { minDuration, strictAnchors, excludeIds });
+    const { fresh, seed } = await getFreshBatch(minDuration, excludeIds, 30);
+    const videos = [...fresh, ...seed];
+    const stats = {
+      totalScanned: videos.length,
+      passed: videos.length,
+      freshCount: fresh.length,
+      seedCount: seed.length,
+      blockedTotal: 0,
+      blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+      blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+      blockedExamples: []
+    };
     res.json({
-      ...data,
-      sourcesUsed: (data.pickedTags || []).map(t => `#${t}`),
-      stats: data.filterStats
+      pickedTags: tags.length ? tags.slice(0, 3) : ['nhacchill', 'lofi', 'remix'],
+      sourcesUsed: (tags.length ? tags.slice(0, 3) : ['nhacchill', 'lofi', 'remix']).map(t => `#${t}`),
+      mode: 'fresh',
+      freshCount: fresh.length,
+      videos,
+      filterStats: stats,
+      stats
     });
   } catch (err) {
     console.error('[/api/smart-mix] Error:', err);
@@ -2165,6 +2180,31 @@ app.get('/api/search', async (req, res) => {
         videos: filtered.videos,
         filterStats: filtered.filterStats,
         stats: filtered.filterStats
+      });
+    }
+
+    if (forceRefresh) {
+      const { fresh, seed } = await getFreshBatch(minDuration, excludeIds, 30);
+      const videos = [...fresh, ...seed];
+      const stats = {
+        totalScanned: videos.length,
+        passed: videos.length,
+        freshCount: fresh.length,
+        seedCount: seed.length,
+        blockedTotal: 0,
+        blockedByReason: { shop: 0, ads: 0, live: 0, spamCaption: 0, shortDuration: 0, invalidMedia: 0 },
+        blocked: { tiktokShop: 0, ads: 0, livestream: 0, commercialAnchor: 0, spamCaption: 0, shortDuration: 0 },
+        blockedExamples: []
+      };
+      return res.json({
+        query: q,
+        resolvedTag: q,
+        expandedTags: [q],
+        mode: 'fresh',
+        freshCount: fresh.length,
+        videos,
+        filterStats: stats,
+        stats
       });
     }
 
