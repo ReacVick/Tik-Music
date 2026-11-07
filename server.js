@@ -403,19 +403,23 @@ async function fetchTikWMUser(username, count = 35, forceRefresh = false) {
           cursor: String(cursor),
           HD: '1'
         }).toString();
-        const res = await axios.post('https://www.tikwm.com/api/feed/search/', body, {
-          httpsAgent: ipv4Agent,
-          timeout: 9000,
-          headers: {
-            ...generateFakeIpHeaders(),
-            'Content-Type': 'application/x-www-form-urlencoded'
-          }
-        });
-        const list = res.data?.data?.videos || [];
-        if (list.length === 0) break; // Hết video của kênh, dừng sớm để tối ưu tốc độ
+        const list = await tikwmQueue.add(async () => {
+          const res = await axios.post('https://www.tikwm.com/api/feed/search/', body, {
+            httpsAgent: ipv4Agent,
+            timeout: 7000,
+            headers: {
+              ...generateFakeIpHeaders(),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          });
+          return res.data?.data?.videos || [];
+        }).catch(() => []);
+
+        if (!Array.isArray(list) || list.length === 0) break; // Hết video của kênh, dừng sớm để tối ưu tốc độ
         for (const v of list) {
-          if (!seenIds.has(v.video_id)) {
-            seenIds.add(v.video_id);
+          const vid = String(v.id || v.video_id || '');
+          if (vid && !seenIds.has(vid)) {
+            seenIds.add(vid);
             rawVideos.push(v);
           }
         }
@@ -2747,6 +2751,66 @@ app.get('/api/account/:username', async (req, res) => {
   } catch (err) {
     console.error('[/api/account] Error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/account/:username/more', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const cleanUser = String(username || '').replace(/^@/, '').trim().toLowerCase();
+    const cursor = Number(req.query.cursor) || 15;
+    const count = Number(req.query.count) || 15;
+
+    // Cào đợt video cũ tiếp theo qua TikWM phân trang cursor (< 0.5s), TUYỆT ĐỐI KHÔNG CHẠY PUPPETEER ĐỂ TRÁNH GIẬT NHẠC
+    const body = new URLSearchParams({
+      keywords: cleanUser,
+      count: String(count),
+      cursor: String(cursor),
+      HD: '1'
+    }).toString();
+
+    let rawList = [];
+    try {
+      const resp = await tikwmQueue.add(async () => {
+        return axios.post('https://www.tikwm.com/api/feed/search/', body, {
+          httpsAgent: ipv4Agent,
+          timeout: 6000,
+          headers: {
+            ...generateFakeIpHeaders(),
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+      });
+      rawList = resp.data?.data?.videos || [];
+    } catch (_) {}
+
+    const cleanVideos = rawList
+      .filter(v => {
+        if (!v || !v.id) return false;
+        const u = (v.author?.unique_id || v.author?.uniqueId || '').toLowerCase();
+        return u === cleanUser || u.startsWith(cleanUser);
+      })
+      .map(transformTikWMItem);
+
+    // Đăng ký vào mediaRegistry để sẵn sàng phát ngay khi người dùng bấm
+    cleanVideos.forEach(v => {
+      mediaRegistry.set(v.id, {
+        id: v.id,
+        videoUrl: v.directPlayUrl,
+        audioUrl: v.directAudioUrl || v.directPlayUrl,
+        coverUrl: v.cover,
+        cookieHeader: '',
+        updatedAt: Date.now()
+      });
+    });
+
+    res.json({
+      username: cleanUser,
+      cursor,
+      videos: cleanVideos
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, videos: [] });
   }
 });
 

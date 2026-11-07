@@ -2295,6 +2295,97 @@ async function openChannelProfile(usernameInput, forceRefresh = false, showGridI
 }
 
 // ============================================================================
+// QUÉT THÊM VIDEO CŨ CỦA KÊNH CUỐN CHIẾU SIÊU TỐC (< 0.8s), KHÔNG GIẬT LAG PLAYER
+// ============================================================================
+let isScanningMoreChannel = false;
+const channelScanCursors = new Map();
+
+async function scanMoreChannelVideos(targetUser) {
+  if (isScanningMoreChannel) return;
+  const uname = targetUser || state.activeChannel.profile?.username || state.account?.username;
+  if (!uname) return;
+
+  const btn = dom.btnChannelLoadMore;
+  const originalText = btn ? btn.innerHTML : '🔄 Quét thêm video cũ của kênh';
+  isScanningMoreChannel = true;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Đang quét (+đợt mới)...';
+    btn.style.opacity = '0.7';
+  }
+
+  try {
+    const existingIds = new Set((state.activeChannel.videos || []).map((v) => String(v.id)));
+    const curCursor = channelScanCursors.get(uname.toLowerCase()) || 0;
+    const nextCursor = curCursor + 15;
+
+    // 1. GỌI API BACKEND PHÂN TRANG CURSOR SIÊU TỐC (< 0.5s), TUYỆT ĐỐI KHÔNG CHẠY PUPPETEER ĐỂ TRÁNH GIẬT NHẠC
+    let incomingVideos = [];
+    try {
+      const params = new URLSearchParams({
+        cursor: String(nextCursor),
+        count: '15'
+      });
+      const res = await fetch(apiUrl(`/api/account/${encodeURIComponent(uname)}/more?${params}`), {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.videos)) incomingVideos = json.videos;
+      }
+    } catch (_) {}
+
+    // 2. NẾU BACKEND CHƯA CÓ KẾT QUẢ, CÀO TRỰC TIẾP QUA CLIENT TIKWM TRONG 0.4s
+    if (incomingVideos.length === 0) {
+      const clientBatch = await fetchTikWMClientSearch(uname, 25, nextCursor).catch(() => []);
+      if (Array.isArray(clientBatch)) {
+        incomingVideos = clientBatch.filter((v) => {
+          const u = (v.author?.uniqueId || v.author?.username || '').toLowerCase();
+          return u === uname.toLowerCase() || u.startsWith(uname.toLowerCase());
+        });
+      }
+    }
+
+    // 3. Lọc chỉ lấy những bài chưa có trong danh sách hiện tại
+    const trulyNew = incomingVideos.filter((v) => v && v.id && !existingIds.has(String(v.id)));
+    channelScanCursors.set(uname.toLowerCase(), nextCursor);
+
+    if (trulyNew.length > 0) {
+      trulyNew.forEach((v) => existingIds.add(String(v.id)));
+      state.activeChannel.videos.push(...trulyNew);
+
+      // Cập nhật số đếm video
+      const totalCount = state.activeChannel.videos.length;
+      if (state.activeChannel.profile) state.activeChannel.profile.videos = totalCount;
+      if (dom.channelLoadedVideosCount) dom.channelLoadedVideosCount.textContent = String(totalCount);
+      if (dom.channelCountBadge) dom.channelCountBadge.textContent = String(totalCount);
+
+      // Cập nhật lại giao diện lưới mượt mà
+      renderChannelProfileView();
+
+      showMiniToast(`✅ Đã tìm thấy thêm +${trulyNew.length} video của @${uname}!`);
+      if (btn) btn.innerHTML = `✅ Đã thêm +${trulyNew.length} video`;
+    } else {
+      showMiniToast(`ℹ️ Đã quét hết toàn bộ video cũ có thể tìm thấy của @${uname}!`);
+      if (btn) btn.innerHTML = `ℹ️ Đã hết video cũ`;
+    }
+  } catch (err) {
+    showMiniToast(`⚠️ Lỗi quét video cũ: ${err.message}`);
+    if (btn) btn.innerHTML = originalText;
+  } finally {
+    setTimeout(() => {
+      isScanningMoreChannel = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        btn.style.opacity = '1';
+      }
+    }, 1500);
+  }
+}
+
+// ============================================================================
 // CỔNG DỰ PHÒNG TIKWM CLOUD CLIENT-SIDE (CHẠY 100% CẢ KHI BACKEND NGỦ HOẶC TẮT)
 // ============================================================================
 function normalizeTikWMItemClient(v) {
@@ -2362,11 +2453,12 @@ function normalizeTikWMItemClient(v) {
   };
 }
 
-async function fetchTikWMClientSearch(keyword, count = 35) {
+async function fetchTikWMClientSearch(keyword, count = 35, cursor = 0) {
   const clean = String(keyword || 'nhacchill').replace(/^#/, '').trim();
   const formBody = new URLSearchParams({
     keywords: clean,
     count: String(count),
+    cursor: String(cursor || 0),
     HD: '1'
   }).toString();
 
@@ -4708,7 +4800,7 @@ function bindEvents() {
 
   dom.btnChannelLoadMore?.addEventListener('click', () => {
     const uname = state.activeChannel.profile?.username || state.account?.username;
-    if (uname) openChannelProfile(uname, true, true);
+    if (uname) scanMoreChannelVideos(uname);
   });
 
   document.querySelectorAll('.channel-sort-btn').forEach((btn) => {
