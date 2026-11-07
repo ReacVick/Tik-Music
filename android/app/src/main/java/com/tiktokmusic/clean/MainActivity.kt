@@ -63,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var isLandscapeLocked: Boolean = false
 
     // Ưu tiên nạp trực tiếp từ CDN tốc độ cao của Hugging Face Space, tự động fallback về bộ nhớ trong của APK nếu mất mạng
-    private val ONLINE_URL = "https://binh007-tik-music.static.hf.space/?v=20261107v7"
+    private val ONLINE_URL = "https://binh007-tik-music.static.hf.space/?v=20261108v2"
     private val OFFLINE_URL = "file:///android_asset/index.html"
 
     @SuppressLint("SetJavaScriptEnabled")

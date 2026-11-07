@@ -924,16 +924,17 @@ body.ambient-switching .ambient-stage-canvas {
   transition: align-items 0.25s ease;
 }
 
-/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm nút phải vẫn nằm góc dưới chuẩn TikTok */
+/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm nút phải nằm NGANG GIỮA tầm video chuẩn TikTok */
 .tt-stage-cluster.is-landscape-stage,
 .tt-stage-cluster:has(.is-landscape-16-9) {
   align-items: center;
+  gap: 18px;
 }
 
 .tt-stage-cluster.is-landscape-stage .tt-action-rail,
 .tt-stage-cluster:has(.is-landscape-16-9) .tt-action-rail {
-  align-self: flex-end;
-  padding-bottom: 12px;
+  align-self: center;
+  padding-bottom: 0;
 }
 
 .tt-stage-cluster.is-landscape-stage .tt-nav-arrows,
@@ -1388,42 +1389,50 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
 }
 
 .rail-icon-circle {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
-  transition: transform 0.15s ease, color 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rail-icon-circle .tt-rail-svg {
+  width: 22px;
+  height: 22px;
 }
 
 .rail-btn:hover .rail-icon-circle,
 .rail-btn:active .rail-icon-circle {
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.08);
 }
 
 .rail-btn.favorited .rail-icon-circle {
   color: #fe2c55 !important;
-  background: transparent !important;
-  border: none !important;
+  background: rgba(254, 44, 85, 0.18) !important;
+  border-color: rgba(254, 44, 85, 0.45) !important;
 }
 
 .rail-btn.active .rail-icon-circle {
   color: #face15 !important;
-  background: transparent !important;
-  border: none !important;
+  background: rgba(250, 206, 21, 0.18) !important;
+  border-color: rgba(250, 206, 21, 0.45) !important;
 }
 
 .rail-spinning-disc {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: radial-gradient(circle, #2a2a2a 0%, #111 65%, #050505 100%);
-  padding: 7px;
+  padding: 8px;
   border: 2px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
   cursor: pointer;
@@ -2215,6 +2224,145 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
   line-height: 1.5;
 }
 
+/* ---------- Modal Đăng nhập Session TikTok ---------- */
+.tt-session-login-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(254, 44, 85, 0.16);
+  border: 1px dashed rgba(254, 44, 85, 0.45);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.tt-session-login-btn:hover {
+  background: rgba(254, 44, 85, 0.3);
+  border-color: rgba(254, 44, 85, 0.8);
+}
+
+.session-modal-box {
+  max-width: 520px;
+}
+
+.session-guide-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.session-guide-box h4 {
+  margin: 0 0 6px 0;
+  color: #fff;
+  font-size: 13px;
+}
+
+.session-guide-box ol {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+
+.session-guide-box code {
+  background: rgba(254, 44, 85, 0.2);
+  color: #fda4af;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.session-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.session-input-group label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.session-input-group input {
+  background: #0d0d12;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+.session-input-group input:focus {
+  border-color: var(--tt-cyan);
+}
+
+.session-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.session-modal-actions .btn-primary {
+  background: var(--tt-red);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.session-modal-actions .btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Tối ưu hóa hiệu năng máy yếu (Chế độ mượt) ---------- */
+.ambient-backdrop-canvas,
+.ambient-stage-canvas {
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+body.perf-mode-active .ambient-backdrop-canvas {
+  display: none !important;
+}
+
+body.perf-mode-active .ambient-stage-canvas {
+  filter: blur(16px) saturate(180%) brightness(1.15) !important;
+  opacity: 0.65 !important;
+}
+
+@media (max-width: 600px) {
+  .ambient-backdrop-canvas {
+    display: none !important; /* Tắt canvas nền sau trên di động để siêu mượt 60fps */
+  }
+
+  .ambient-stage-canvas {
+    filter: blur(28px) saturate(210%) brightness(1.25) !important;
+  }
+}
+
 
 /* =====================================================================
    BẢN CẬP NHẬT: MENU 3 CHẤM · ẨN THANH TRÊN · THƯ VIỆN · TOÀN MÀN HÌNH
@@ -2964,11 +3112,35 @@ body.queue-overlay-open .tt-overlay-backdrop {
   }
 
   .rail-icon-circle {
-    width: 36px;
-    height: 36px;
+    width: 36px !important;
+    height: 36px !important;
     background: transparent !important;
     border: none !important;
     backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .rail-icon-circle .tt-rail-svg {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .rail-btn.favorited .rail-icon-circle {
+    background: transparent !important;
+    border: none !important;
+    color: #fe2c55 !important;
+  }
+
+  .rail-btn.active .rail-icon-circle {
+    background: transparent !important;
+    border: none !important;
+    color: #face15 !important;
+  }
+
+  .rail-spinning-disc {
+    width: 44px !important;
+    height: 44px !important;
+    padding: 7px !important;
   }
 
   .tt-bottom-overlay {
@@ -3520,4 +3692,203 @@ body.landscape-fullscreen-active .tt-more-menu {
   right: max(18px, env(safe-area-inset-right)) !important;
   max-height: min(200px, 50dvh) !important;
   z-index: 60 !important;
+}
+
+/* ========================================================================== */
+/* MÀN HÌNH MỞ ĐẦU CHUẨN TIKTOK (SPLASH SCREEN CHE GIẤU THỜI GIAN CÀO VIDEO)  */
+/* ========================================================================== */
+.tt-splash-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: radial-gradient(circle at center, #14151f 0%, #08090d 100%);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.tt-splash-screen.splash-hidden {
+  opacity: 0;
+  transform: scale(1.06);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.tt-splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  animation: splashPulse 2.4s ease-in-out infinite;
+}
+
+.tt-splash-logo-wrap {
+  width: 84px;
+  height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  filter: drop-shadow(0 8px 30px rgba(0, 242, 254, 0.28)) drop-shadow(0 8px 30px rgba(254, 44, 85, 0.28));
+}
+
+.tt-splash-logo {
+  width: 80px;
+  height: 80px;
+}
+
+.tt-splash-logo .tt-layer-cyan {
+  transform: translate(-1.5px, -1.5px);
+  opacity: 0.88;
+}
+
+.tt-splash-logo .tt-layer-pink {
+  transform: translate(1.5px, 1.5px);
+  opacity: 0.88;
+}
+
+.tt-splash-logo .tt-layer-white {
+  position: relative;
+}
+
+.tt-splash-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.tt-splash-title span {
+  background: linear-gradient(135deg, #00f2fe 0%, #fe2c55 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+}
+
+.tt-splash-soundwave {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  margin-top: 4px;
+}
+
+.tt-splash-soundwave .bar {
+  width: 3.5px;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #00f2fe, #fe2c55);
+  animation: waveBar 0.9s ease-in-out infinite alternate;
+}
+
+.tt-splash-soundwave .bar-1 { animation-delay: 0.0s; }
+.tt-splash-soundwave .bar-2 { animation-delay: 0.2s; }
+.tt-splash-soundwave .bar-3 { animation-delay: 0.4s; }
+.tt-splash-soundwave .bar-4 { animation-delay: 0.6s; }
+
+.tt-splash-status {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.2px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+@keyframes splashPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+
+@keyframes waveBar {
+  0% {
+    height: 4px;
+    opacity: 0.4;
+  }
+  100% {
+    height: 18px;
+    opacity: 1;
+  }
+}
+
+/* ========================================================================== */
+/* THANH TIẾN TRÌNH SIÊU MỎNG SÁT MÉP ĐÁY CHUẨN TIKTOK (PC & MOBILE)         */
+/* ========================================================================== */
+.tt-edge-progress-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+  z-index: 55;
+  touch-action: none;
+  padding: 0;
+  background: transparent;
+}
+
+.tt-edge-track {
+  width: 100%;
+  height: 3.5px;
+  background: rgba(255, 255, 255, 0.28);
+  position: relative;
+  transition: height 0.15s ease;
+  pointer-events: none;
+}
+
+.tt-edge-progress-bar:hover .tt-edge-track,
+.tt-edge-progress-bar.is-dragging .tt-edge-track {
+  height: 6px;
+}
+
+.tt-edge-fill {
+  height: 100%;
+  width: 0%;
+  background: #fe2c55; /* Chuẩn đỏ hồng TikTok */
+  position: relative;
+  border-radius: 0 999px 999px 0;
+  box-shadow: 0 0 10px rgba(254, 44, 85, 0.7);
+}
+
+.tt-edge-thumb {
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translateY(-50%) scale(0.9);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.8), 0 0 6px rgba(254, 44, 85, 0.8);
+}
+
+.tt-edge-progress-bar:hover .tt-edge-thumb,
+.tt-edge-progress-bar.is-dragging .tt-edge-thumb {
+  transform: translateY(-50%) scale(1.4);
+  box-shadow: 0 0 12px rgba(254, 44, 85, 1), 0 0 4px #ffffff;
+}
+
+.tt-player-bar {
+  display: none !important;
 }
