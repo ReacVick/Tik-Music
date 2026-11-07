@@ -13,7 +13,12 @@
 //      Sân Khấu Vòm 360° (Concert Hall), và Tắt (Âm gốc).
 // ============================================================================
 
-const API_BASE = (window.location.protocol === 'file:' || window.location.hostname.includes('github.io'))
+const API_BASE = (
+  window.location.protocol === 'file:' ||
+  window.location.hostname.includes('github.io') ||
+  window.location.hostname.includes('hf.space') ||
+  window.location.hostname.includes('huggingface.co')
+)
   ? 'https://tik-music.onrender.com'
   : '';
 
@@ -246,6 +251,7 @@ const dom = {
   btnMenuFullscreen: document.getElementById('btnMenuFullscreen'),
   btnFullscreenTop: document.getElementById('btnFullscreenTop'),
   btnFullscreenBar: document.getElementById('btnFullscreenBar'),
+  btnLandscapeFullscreenOverlay: document.getElementById('btnLandscapeFullscreenOverlay'),
   btnCaptionMore: document.getElementById('btnCaptionMore'),
 
   // Thư viện Yêu thích / Đã lưu / Đã nghe
@@ -950,6 +956,12 @@ function applyVideoAspectRatio(forceLandscape = null) {
 
   dom.ttPhoneFrame?.classList.toggle('is-landscape-16-9', useLandscape16x9);
   dom.playerStageInner?.classList.toggle('is-landscape-stage', useLandscape16x9);
+  document.body.classList.toggle('is-landscape-video', useLandscape16x9);
+
+  // Nếu chuyển sang video dọc 9:16 khi đang ở chế độ xoay ngang toàn màn hình -> tự động trả về màn hình dọc
+  if (!useLandscape16x9 && document.body.classList.contains('landscape-fullscreen-active')) {
+    exitLandscapeFullscreen();
+  }
 
   if (dom.aspectRatioLabel) {
     if (state.aspectMode === 'auto') {
@@ -1569,26 +1581,74 @@ function playFromLibraryList(tab, index = 0, shuffle = false) {
 // ============================================================================
 // TOÀN MÀN HÌNH · MENU 3 CHẤM · RESPONSIVE PANELS · TOAST
 // ============================================================================
-function toggleFullscreen() {
+function enterLandscapeFullscreen() {
+  document.body.classList.add('landscape-fullscreen-active');
+  try {
+    if (window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function') {
+      window.AndroidBridge.setLandscape(true);
+    }
+  } catch (_) {}
+
   const target = dom.mediaStage || document.documentElement;
+  if (!document.fullscreenElement) {
+    if (target.requestFullscreen) {
+      target.requestFullscreen().then(() => {
+        try {
+          screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+        } catch (_) {}
+      }).catch(() => {});
+    } else if (target.webkitRequestFullscreen) {
+      try {
+        target.webkitRequestFullscreen();
+      } catch (_) {}
+    }
+  }
+  try {
+    screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+  } catch (_) {}
+  syncFullscreenUI();
+}
+
+function exitLandscapeFullscreen() {
+  document.body.classList.remove('landscape-fullscreen-active');
+  try {
+    if (window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function') {
+      window.AndroidBridge.setLandscape(false);
+    }
+  } catch (_) {}
+  try {
+    screen.orientation?.unlock?.();
+  } catch (_) {}
   if (document.fullscreenElement) {
     document.exitFullscreen?.().catch(() => {});
-  } else if (target.requestFullscreen) {
-    target.requestFullscreen().catch(() => {
-      showMiniToast('Trình duyệt không cho phép toàn màn hình');
-    });
-  } else if (target.webkitRequestFullscreen) {
-    target.webkitRequestFullscreen();
   }
+  syncFullscreenUI();
+}
+window.exitLandscapeFullscreen = exitLandscapeFullscreen;
+
+function toggleFullscreen() {
+  const isFs = Boolean(document.fullscreenElement) || document.body.classList.contains('landscape-fullscreen-active');
+  if (isFs) {
+    exitLandscapeFullscreen();
+    return;
+  }
+  // Chỉ phóng to & xoay ngang đối với video 16:9
+  if (!document.body.classList.contains('is-landscape-video')) {
+    return;
+  }
+  enterLandscapeFullscreen();
 }
 
 function syncFullscreenUI() {
-  const isFs = Boolean(document.fullscreenElement);
+  const isFs = Boolean(document.fullscreenElement) || document.body.classList.contains('landscape-fullscreen-active');
   if (dom.btnFullscreenBar) dom.btnFullscreenBar.textContent = isFs ? '🗗' : '⛶';
   const topLabel = dom.btnFullscreenTop?.querySelector('span');
-  if (topLabel) topLabel.textContent = isFs ? '🗗 Thoát toàn màn hình' : '⛶ Toàn màn hình';
+  if (topLabel) topLabel.textContent = isFs ? '🗗 Thoát ngang' : '⛶ Phóng to 16:9';
   const menuLabel = dom.btnMenuFullscreen?.querySelector('.menu-row-label');
-  if (menuLabel) menuLabel.textContent = isFs ? '🗗 Thoát toàn màn hình' : '⛶ Toàn màn hình';
+  if (menuLabel) menuLabel.textContent = isFs ? '🗗 Thoát toàn màn hình' : '⛶ Phóng to ngang (16:9)';
+  if (dom.btnLandscapeFullscreenOverlay) {
+    dom.btnLandscapeFullscreenOverlay.textContent = isFs ? '🗗 Thu nhỏ dọc' : '⛶ Phóng to ngang';
+  }
 }
 
 function closeMobilePanels() {
@@ -2057,6 +2117,34 @@ function filterCatalog(catalog, queryOrTag) {
 // ============================================================================
 // GỌI API BACKEND & TÌM KIẾM CHUẨN XÁC CAO (15-28 VIDEO ĐẦU ĐÚNG CHỦ ĐỀ)
 // ============================================================================
+// Bộ đệm nạp trước (Prefetch) giúp bấm "Đổi loạt mới" phản hồi tức thì 0ms
+let prefetchedFreshData = null;
+let isPrefetchingFresh = false;
+
+async function prefetchNextFreshBatch() {
+  if (isPrefetchingFresh) return;
+  isPrefetchingFresh = true;
+  try {
+    const params = new URLSearchParams({
+      tag: state.lastQueryValue || 'nhacchill',
+      minDuration: String(state.minDuration),
+      strictAnchors: String(state.strictAnchors),
+      refresh: 'true',
+      exclude: getSeenIdsParam(120),
+    });
+    const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(15000) });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && Array.isArray(json.videos) && json.videos.length > 0) {
+        prefetchedFreshData = json;
+      }
+    }
+  } catch (_) {
+  } finally {
+    isPrefetchingFresh = false;
+  }
+}
+
 async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
   const cleanTag = tag.replace(/^#/, '').trim();
   if (!cleanTag) return;
@@ -2069,6 +2157,17 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
   dom.currentFeedSourceLabel.textContent = `#${cleanTag}`;
   dom.queueTitle.textContent = `Tiếp theo: #${cleanTag}`;
   dom.queueSubtitle.textContent = `Đang tải danh sách video sạch cho #${cleanTag}...`;
+
+  // Nếu người dùng bấm "Đổi loạt mới" và đã có sẵn gói dữ liệu cào trước trong RAM -> hiển thị tức thì 0ms!
+  if (forceRefresh && prefetchedFreshData && Array.isArray(prefetchedFreshData.videos) && prefetchedFreshData.videos.length > 0) {
+    const readyData = prefetchedFreshData;
+    prefetchedFreshData = null;
+    showMiniToast(`⚡ Đã nạp tức thì ${readyData.freshCount || readyData.videos.length} video mới từ TikTok!`);
+    applyNewFeedData(readyData, `Danh sách video #${cleanTag}`, opts);
+    setTimeout(prefetchNextFreshBatch, 300);
+    return;
+  }
+
   setLoadingState(true);
 
   try {
@@ -2083,7 +2182,7 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
       });
 
       if (forceRefresh) showMiniToast('🎲 Đang cào loạt video mới từ TikTok...');
-      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(forceRefresh ? 30000 : 9000) });
+      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(forceRefresh ? 25000 : 9000) });
       if (res.ok) {
         data = await res.json();
         if (forceRefresh && data.mode === 'fresh') {
@@ -2370,6 +2469,9 @@ function applyNewFeedData(data, subtitleText, opts = {}) {
 
   if (videos.length > 0) {
     playTrackAtIndex(0, true, opts);
+    if (!prefetchedFreshData && !isPrefetchingFresh) {
+      setTimeout(prefetchNextFreshBatch, 1200);
+    }
   } else {
     renderQueueList();
     showErrorInQueue(
@@ -2483,7 +2585,12 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   // Render danh sách video tiếp theo ở cột phải
   renderQueueList();
 
-  let streamUrl = track.video?.streamUrl || track.streamVideoUrl || track.streamAudioUrl;
+  // Luôn ưu tiên định tuyến qua /api/stream/:id để tự động làm mới link CDN hết hạn (TikWM POST / Mobile Edge)
+  track._retryStage = 0;
+  const modeType = state.playMode === 'audio' ? 'audio' : 'video';
+  let streamUrl = track.id
+    ? apiUrl(`/api/stream/${encodeURIComponent(track.id)}?type=${modeType}`)
+    : (track.video?.streamUrl || track.streamVideoUrl || track.streamAudioUrl);
   if (streamUrl && streamUrl.startsWith('/api/')) {
     streamUrl = apiUrl(streamUrl);
   }
@@ -2968,14 +3075,27 @@ function bindEvents() {
     dom.btnCaptionMore.textContent = expanded ? 'ẩn bớt' : 'thêm';
   });
 
-  // Toàn màn hình (Fullscreen)
+  // Toàn màn hình (Fullscreen & Xoay ngang cho video 16:9)
   dom.btnFullscreenTop?.addEventListener('click', toggleFullscreen);
   dom.btnFullscreenBar?.addEventListener('click', toggleFullscreen);
+  dom.btnLandscapeFullscreenOverlay?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFullscreen();
+  });
   dom.btnMenuFullscreen?.addEventListener('click', () => {
     dom.videoMoreMenu?.classList.add('hidden');
     toggleFullscreen();
   });
-  document.addEventListener('fullscreenchange', syncFullscreenUI);
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && document.body.classList.contains('landscape-fullscreen-active')) {
+      document.body.classList.remove('landscape-fullscreen-active');
+      try {
+        window.AndroidBridge?.setLandscape?.(false);
+        screen.orientation?.unlock?.();
+      } catch (_) {}
+    }
+    syncFullscreenUI();
+  });
 
   // Responsive: nút mở menu cột trái & lớp phủ trên màn hình nhỏ
   dom.btnToggleSidebar?.addEventListener('click', () => {
@@ -3286,11 +3406,9 @@ function bindEvents() {
     }
   });
 
-  let consecutiveErrors = 0;
-  let lastErrorTime = 0;
-
   dom.videoPlayer?.addEventListener('playing', () => {
-    consecutiveErrors = 0;
+    const currentTrack = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+    if (currentTrack) currentTrack._retryStage = 0;
     setLoadingState(false);
     updatePlayingUI(true);
   });
@@ -3298,40 +3416,38 @@ function bindEvents() {
   dom.videoPlayer?.addEventListener('error', () => {
     setLoadingState(false);
     updatePlayingUI(false);
-    const now = Date.now();
-    if (now - lastErrorTime < 4500) {
-      consecutiveErrors++;
-    } else {
-      consecutiveErrors = 1;
-    }
-    lastErrorTime = now;
-
-    console.warn(`[Player] Lỗi luồng phát video (lần ${consecutiveErrors})`);
 
     const currentTrack = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
-    // 1. Cứu nguy: Thử chuyển sang luồng audio trực tiếp nếu đang phát link video bị lỗi
-    if (currentTrack && currentTrack.streamAudioUrl && dom.videoPlayer.src !== currentTrack.streamAudioUrl && currentTrack.streamAudioUrl.startsWith('http')) {
-      console.log('Tự động chuyển sang luồng audio trực tiếp từ TikTok CDN...');
-      dom.videoPlayer.src = currentTrack.streamAudioUrl;
-      dom.videoPlayer.play().catch(() => {});
+    if (!currentTrack || !currentTrack.id) return;
+
+    const retryStage = currentTrack._retryStage || 0;
+    console.warn(`[Player] Luồng phát cần làm mới cho bài ${currentTrack.id} (bước ${retryStage + 1})`);
+
+    // Bước 1: Yêu cầu server phân giải lại luồng video MP4 mới tinh từ TikWM POST / TikTok Edge (refresh=1)
+    if (retryStage === 0) {
+      currentTrack._retryStage = 1;
+      setLoadingState(true);
+      dom.videoPlayer.src = apiUrl(`/api/stream/${encodeURIComponent(currentTrack.id)}?type=video&refresh=1&t=${Date.now()}`);
+      dom.videoPlayer.play().catch(() => {
+        setLoadingState(false);
+      });
       return;
     }
 
-    // 2. Chống lặp nhảy bài liên tục: Nếu lỗi >= 2 bài liên tiếp, dừng hẳn việc tự động nhảy!
-    if (consecutiveErrors >= 2) {
-      console.warn('Đã gặp lỗi 2 lần liên tiếp, ngắt tự động chuyển bài để chống nhảy liên tùng tục.');
-      showAutoScrollToast('⚠️ Bài này tạm thời bị gián đoạn, bấm "Tiếp theo" để đổi bài khác.');
+    // Bước 2: Thử phân giải luồng âm thanh trực tiếp (type=audio&refresh=1)
+    if (retryStage === 1) {
+      currentTrack._retryStage = 2;
+      setLoadingState(true);
+      dom.videoPlayer.src = apiUrl(`/api/stream/${encodeURIComponent(currentTrack.id)}?type=audio&refresh=1&t=${Date.now()}`);
+      dom.videoPlayer.play().catch(() => {
+        setLoadingState(false);
+      });
       return;
     }
 
-    // 3. Nếu chỉ là lỗi 1 bài đơn lẻ, đợi 1.2s rồi chuyển nhẹ sang bài kế tiếp
-    if (state.queue.length > 1) {
-      setTimeout(() => {
-        if (consecutiveErrors < 2) {
-          playNextTrack(true);
-        }
-      }, 1200);
-    }
+    // Bước 3: Tuyệt đối KHÔNG tự động nhảy sang bài khác (playNextTrack) khi gặp lỗi để chấm dứt hoàn toàn lỗi tự nhảy bài liên tục!
+    currentTrack._retryStage = 3;
+    showMiniToast('⚠️ Video này đang bận, hãy bấm phát lại hoặc vuốt sang bài khác');
   });
 
   dom.seekBar?.addEventListener('input', () => {

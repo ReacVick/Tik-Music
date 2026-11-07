@@ -1762,18 +1762,31 @@ async function fetchUserAccountProfile(usernameInput, options = {}) {
 }
 
 /**
- * Lấy luồng video đề xuất từ Mobile API (api16-normal-useast5.tiktokv.us)
+ * Lấy luồng video đề xuất siêu tốc từ cụm 8 máy chủ TikTok Edge API song song
  */
+const TIKTOK_EDGE_HOSTS = [
+  'api16-normal-c-useast2a.tiktokv.com',
+  'api22-normal-c-useast2a.tiktokv.com',
+  'api22-core-c-useast2a.tiktokv.com',
+  'api22-core-c-useast1a.tiktokv.com',
+  'api16-core-c-useast1a.tiktokv.com',
+  'api16-core-c-useast2a.tiktokv.com',
+  'api16-normal-useast5.tiktokv.us',
+  'api16-core-useast5.tiktokv.us'
+];
+let edgeHostCursor = 0;
+
 async function fetchMobileFeedItems(batches = 2, awemeId = '') {
-  const results = [];
   const USER_AGENT =
     'com.zhiliaoapp.musically/300904 (2018111632; U; Android 10; en_US; Pixel 4; Build/QQ3A.200805.001; Cronet/58.0.2991.0)';
 
-  for (let i = 0; i < batches; i++) {
+  const fetchOneBatch = async (host) => {
     const deviceId = '73' + Math.floor(10000000000000000 + Math.random() * 89999999999999999);
     const iid = '73' + Math.floor(10000000000000000 + Math.random() * 89999999999999999);
+    const openudid = Math.random().toString(16).slice(2, 18).padEnd(16, '0');
+    const uuid = '73' + Math.floor(100000000000000 + Math.random() * 899999999999999);
     const params = new URLSearchParams({
-      ...(awemeId ? { aweme_id: awemeId } : {}),
+      ...(awemeId ? { aweme_id: awemeId } : { count: '20' }),
       version_name: '1.1.9',
       version_code: '2018111632',
       build_number: '1.1.9',
@@ -1781,8 +1794,8 @@ async function fetchMobileFeedItems(batches = 2, awemeId = '') {
       iid: iid,
       manifest_version_code: '2018111632',
       update_version_code: '2018111632',
-      openudid: '0123456789abcdef',
-      uuid: '1234567890123456',
+      openudid,
+      uuid,
       _rticket: String(Date.now() * 1000),
       ts: String(Math.floor(Date.now() / 1000)),
       device_brand: 'Google',
@@ -1802,23 +1815,34 @@ async function fetchMobileFeedItems(batches = 2, awemeId = '') {
 
     try {
       const res = await axios({
-        url: `https://api16-normal-useast5.tiktokv.us/aweme/v1/feed/?${params.toString()}`,
+        url: `https://${host}/aweme/v1/feed/?${params.toString()}`,
         method: 'OPTIONS',
         httpsAgent: ipv4Agent,
         headers: { 'User-Agent': USER_AGENT },
-        timeout: 4500
+        timeout: 3200
       });
       if (Array.isArray(res.data?.aweme_list)) {
         if (awemeId) {
           const exact = res.data.aweme_list.find(v => String(v.aweme_id) === String(awemeId));
           if (exact) return [exact];
         }
-        results.push(...res.data.aweme_list);
+        return res.data.aweme_list;
       }
     } catch (e) {}
-    if (awemeId) break;
+    return [];
+  };
+
+  if (awemeId) {
+    const host = TIKTOK_EDGE_HOSTS[edgeHostCursor++ % TIKTOK_EDGE_HOSTS.length];
+    return fetchOneBatch(host);
   }
-  return results;
+
+  const tasks = Array.from({ length: batches }, () => {
+    const host = TIKTOK_EDGE_HOSTS[edgeHostCursor++ % TIKTOK_EDGE_HOSTS.length];
+    return fetchOneBatch(host);
+  });
+  const settled = await Promise.all(tasks);
+  return settled.flat();
 }
 
 // ============================================================================
@@ -1935,11 +1959,11 @@ app.get('/api/trending-sounds', async (req, res) => {
 });
 
 // ============================================================================
-// KHO VIDEO TƯƠI (FRESH POOL): Cào liên tục từ TikTok Mobile Feed, dùng cho "Đổi loạt mới"
+// KHO VIDEO TƯƠI (FRESH POOL): Cào liên tục từ cụm 8 máy chủ TikTok Edge, phản hồi < 5ms
 // ============================================================================
-const freshPool = { items: [], updatedAt: 0, filling: false };
+const freshPool = { items: [], updatedAt: 0, filling: null };
 
-async function refillFreshPool(rounds = 6) {
+async function refillFreshPool(rounds = 8) {
   if (freshPool.filling) return freshPool.filling;
   freshPool.filling = doRefillFreshPool(rounds).finally(() => {
     freshPool.filling = null;
@@ -1949,8 +1973,7 @@ async function refillFreshPool(rounds = 6) {
 
 async function doRefillFreshPool(rounds) {
   try {
-    const batches = await Promise.all(Array.from({ length: rounds }, () => fetchMobileFeedItems(1)));
-    const raw = batches.flat();
+    const raw = await fetchMobileFeedItems(rounds);
     const { videos } = filterAndNormalizeItems(raw, latestCookieHeader, { minDuration: 0, excludeIds: [] });
     const ids = new Set(freshPool.items.map(v => v.id));
     let added = 0;
@@ -1961,7 +1984,7 @@ async function doRefillFreshPool(rounds) {
         added++;
       }
     }
-    if (freshPool.items.length > 500) freshPool.items = freshPool.items.slice(-500);
+    if (freshPool.items.length > 800) freshPool.items = freshPool.items.slice(-800);
     freshPool.updatedAt = Date.now();
     console.log(`[FreshPool] +${added} video mới (tổng ${freshPool.items.length})`);
   } catch (e) {
@@ -1984,11 +2007,12 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
     freshPool.items.filter(v => !exclude.has(String(v.id)) && Number(v.duration || v.video?.duration || 0) >= minDuration);
 
   let fresh = pick();
-  if (fresh.length < 12) {
+  // Chỉ chờ mạng khi kho RAM thực sự dưới 6 bài; nếu đã có >= 6 bài thì trả về tức thì (< 5ms) và cào bù ở nền
+  if (fresh.length < 6) {
     await refillFreshPool(8);
     fresh = pick();
   }
-  if (fresh.length < 12) {
+  if (fresh.length < 6) {
     await refillFreshPool(8);
     fresh = pick();
   }
@@ -2012,19 +2036,22 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
           audioUrl: v.streamAudioUrl || v.streamVideoUrl,
           coverUrl: v.cover,
           cookieHeader: '',
-          updatedAt: Date.now()
+          updatedAt: 0
         });
       }
     });
   }
 
-  // Nạp thêm ngầm cho lần bấm sau
-  refillFreshPool(4);
+  // Nạp thêm ngầm trên 8 nhánh Edge cho lần bấm sau
+  refillFreshPool(8);
   return { fresh, seed };
 }
 
-setInterval(() => refillFreshPool(4), 3 * 60 * 1000);
-setTimeout(() => refillFreshPool(6), 5000);
+setInterval(() => refillFreshPool(8), 90 * 1000);
+setTimeout(async () => {
+  await refillFreshPool(10);
+  await refillFreshPool(10);
+}, 1500);
 
 app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
   try {
@@ -2275,24 +2302,43 @@ app.get('/api/account/:username', async (req, res) => {
  */
 const MAX_CHUNK_SIZE = 32 * 1024 * 1024; // 32 MB mỗi lần nạp đệm cho video dài
 
+function isStreamEntryStale(entry, type = 'video') {
+  if (!entry) return true;
+  const url = type === 'audio' && entry.audioUrl ? entry.audioUrl : entry.videoUrl;
+  if (!url) return true;
+  // Các link webapp-prime.tiktok.com từ feed_data.json tĩnh không có cookie phiên sẽ bị 403 -> cần làm mới qua TikWM POST
+  if (url.includes('webapp-prime.tiktok.com') && !entry.cookieHeader) {
+    return true;
+  }
+  const expMatch = url.match(/[?&](?:expire|x-expires)=(\d{10})\b/i);
+  if (expMatch) {
+    const expSec = Number(expMatch[1]);
+    if (expSec * 1000 <= Date.now() + 120000) return true;
+  }
+  if (!entry.updatedAt || Date.now() - entry.updatedAt > 35 * 60 * 1000) {
+    return true;
+  }
+  return false;
+}
+
 app.get('/api/stream/:id', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   const { id } = req.params;
   const type = req.query.type === 'audio' ? 'audio' : 'video';
+  const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
   let entry = mediaRegistry.get(id);
-  if (!entry) {
-    const items = await fetchMobileFeedItems(1, id);
-    if (items.length > 0) {
-      normalizeVideoItem(items[0], latestCookieHeader);
-      entry = mediaRegistry.get(id);
-    }
-  }
-  if (!entry) {
+  if (forceRefresh || isStreamEntryStale(entry, type)) {
     const tikwmItem = await fetchTikWMSingleVideo(id);
     if (tikwmItem) {
       entry = mediaRegistry.get(id);
+    } else {
+      const items = await fetchMobileFeedItems(1, id);
+      if (items.length > 0) {
+        normalizeVideoItem(items[0], latestCookieHeader);
+        entry = mediaRegistry.get(id);
+      }
     }
   }
 

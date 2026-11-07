@@ -19,9 +19,9 @@
 
   <!-- Nút mở menu bên trái trên màn hình nhỏ (tablet / điện thoại) -->
   <button type="button" class="tt-mobile-menu-btn" id="btnToggleSidebar" title="Mở menu">☰</button>
-  <div class="tt-overlay-backdrop" id="overlayBackdrop"></div>
 
   <div class="tiktok-app-layout" id="appLayout">
+    <div class="tt-overlay-backdrop" id="overlayBackdrop"></div>
     <!-- ==================== 1. CỘT TRÁI CHUẨN TIKTOK.COM ==================== -->
     <aside class="tt-sidebar">
       <div class="tt-logo-row">
@@ -325,6 +325,16 @@
               preload="auto"
               crossorigin="anonymous"
             ></video>
+
+            <!-- Nút phóng to & xoay ngang chỉ xuất hiện khi video có tỷ lệ 16:9 -->
+            <button
+              type="button"
+              class="tt-landscape-fs-btn"
+              id="btnLandscapeFullscreenOverlay"
+              title="Phóng to toàn màn hình & Xoay ngang (16:9)"
+            >
+              ⛶ Phóng to ngang
+            </button>
 
             <div class="autoscroll-toast hidden" id="autoScrollToast">
               <span>📲 Đang tự động cuộn sang bài tiếp theo...</span>
