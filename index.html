@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261107v5" />
+  <link rel="stylesheet" href="styles.css?v=20261107v7" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#fe2c55" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -329,6 +329,17 @@
               crossorigin="anonymous"
             ></video>
 
+            <!-- Nút Phát / Tạm dừng giữa màn hình (giống TikTok khi chạm vào video, đồng bộ cùng kiểu icon Play & Pause trắng) -->
+            <button
+              type="button"
+              class="tt-portrait-center-play"
+              id="btnPortraitCenterPlay"
+              title="Phát / Tạm dừng"
+              aria-label="Phát hoặc Tạm dừng"
+            >
+              <svg class="icon-svg-play" viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M7 5.5v13l11-6.5-11-6.5z"/></svg>
+            </button>
+
             <!-- Nút phóng to & xoay ngang chỉ xuất hiện khi video có tỷ lệ 16:9 -->
             <button
               type="button"
@@ -382,14 +393,15 @@
               <span class="tt-music-title" id="trackMusicTitle">Đang tải bài nhạc...</span>
             </div>
 
-            <div class="tt-player-bar">
-              <button type="button" class="tt-play-btn" id="btnPlayPause" title="Phát / Tạm dừng (Space)">▶</button>
+            <div class="tt-player-bar" id="portraitPlayerBar">
+              <button type="button" class="tt-play-btn" id="btnPlayPause" title="Phát / Tạm dừng (Space)" aria-label="Phát hoặc Tạm dừng">
+                <svg class="icon-svg-play" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 5.5v13l11-6.5-11-6.5z"/></svg>
+              </button>
               <span class="tt-time" id="currentTimeText">0:00</span>
               <input type="range" id="seekBar" class="tt-seekbar" min="0" max="100" value="0" step="0.1" />
               <span class="tt-time" id="durationTimeText">0:00</span>
               <span class="tt-vol-btn" id="btnMuteToggle" title="Bật/Tắt tiếng">🔊</span>
               <input type="range" id="volumeBar" class="tt-vol-slider" min="0" max="1" step="0.05" value="0.9" />
-              <button type="button" class="tt-fs-btn" id="btnFullscreenBar" title="Toàn màn hình (Phím F)">⛶</button>
             </div>
           </div>
 
@@ -411,8 +423,8 @@
               </div>
             </div>
 
-            <button type="button" class="ls-center-play-btn" id="btnLsCenterPlay" title="Phát / Tạm dừng">
-              ⏸
+            <button type="button" class="ls-center-play-btn" id="btnLsCenterPlay" title="Phát / Tạm dừng" aria-label="Phát hoặc Tạm dừng">
+              <svg class="icon-svg-pause" viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
             </button>
 
             <div class="ls-hud-bottom">
@@ -427,15 +439,21 @@
               <div class="ls-actions-row">
                 <div class="ls-actions-left">
                   <button type="button" class="ls-action-btn" id="btnLsFavorite" title="Thêm vào Bài hát yêu thích">
-                    <span class="ls-act-icon" id="lsFavIcon">🤍</span>
+                    <span class="ls-act-icon" id="lsFavIcon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </span>
                     <span id="lsFavText">Yêu thích</span>
                   </button>
                   <button type="button" class="ls-action-btn" id="btnLsSaved" title="Lưu vào Phần lưu nhạc">
-                    <span class="ls-act-icon" id="lsSavedIcon">🔖</span>
+                    <span class="ls-act-icon" id="lsSavedIcon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v16l-8-3.6L4 21V5a2 2 0 0 1 2-2z"/></svg>
+                    </span>
                     <span id="lsSavedText">Lưu nhạc</span>
                   </button>
                   <button type="button" class="ls-action-btn" id="btnLsSameMusic" title="Nghe các video cùng bài nhạc">
-                    <span class="ls-act-icon">🎶</span>
+                    <span class="ls-act-icon">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                    </span>
                     <span>Cùng nhạc</span>
                   </button>
                   <button type="button" class="ls-action-btn" id="btnLsRefresh" title="Đổi loạt video mới">
@@ -463,25 +481,31 @@
           </div>
         </div>
 
-        <!-- CỘT NÚT TƯƠNG TÁC DỌC BÊN PHẢI (TIKTOK ACTION RAIL) -->
+        <!-- CỘT NÚT TƯƠNG TÁC DỌC BÊN PHẢI CHUẨN TIKTOK (NẰM SÁT GÓC DƯỚI PHẢI) -->
         <div class="tt-action-rail">
           <div class="rail-avatar-wrap" id="railCreatorBtn" title="Bấm vào Avatar để vào kênh xem toàn bộ video của kênh này!">
             <img id="trackAuthorAvatar" src="" alt="Creator" class="rail-avatar" />
-            <span class="rail-follow-plus" title="Xem kênh">↗</span>
+            <span class="rail-follow-plus" title="Xem kênh">+</span>
           </div>
 
           <button type="button" class="rail-btn" id="btnToggleFavorite" title="Thêm vào Bài hát yêu thích (Phím L)">
-            <div class="rail-icon-circle" id="favIcon">🤍</div>
+            <div class="rail-icon-circle" id="favIcon">
+              <svg class="tt-rail-svg" viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </div>
             <span id="railFavLabel">Yêu thích</span>
           </button>
 
           <button type="button" class="rail-btn" id="btnToggleSaved" title="Lưu vào Phần lưu nhạc (Phím S)">
-            <div class="rail-icon-circle" id="savedIcon">🔖</div>
+            <div class="rail-icon-circle" id="savedIcon">
+              <svg class="tt-rail-svg" viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v16l-8-3.6L4 21V5a2 2 0 0 1 2-2z"/></svg>
+            </div>
             <span id="railSavedLabel">Lưu nhạc</span>
           </button>
 
           <button type="button" class="rail-btn" id="btnSameMusic" title="Nghe các video dùng chung bài nhạc này">
-            <div class="rail-icon-circle">🎶</div>
+            <div class="rail-icon-circle">
+              <svg class="tt-rail-svg" viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
             <span>Cùng nhạc</span>
           </button>
 
@@ -665,7 +689,7 @@
     </div>
   </div>
 
-  <script src="catalog_bundle.js?v=20261107v5"></script>
-  <script src="app.js?v=20261107v5"></script>
+  <script src="catalog_bundle.js?v=20261107v7"></script>
+  <script src="app.js?v=20261107v7"></script>
 </body>
 </html>

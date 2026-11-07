@@ -59,11 +59,49 @@ select {
   touch-action: manipulation;
 }
 
-/* Chỉ hiển thị nút phóng to & xoay ngang khi video có tỷ lệ 16:9 (Video 9:16 ẩn hoàn toàn nút phóng to) */
-body:not(.is-landscape-video) #btnFullscreenTop,
-body:not(.is-landscape-video) #btnFullscreenBar,
+/* Bỏ nút phóng to ở góc trên & góc dưới bên phải, chỉ giữ lại nút Phóng to ngang khi video là tỷ lệ 16:9 */
+#btnFullscreenTop,
+#btnFullscreenBar {
+  display: none !important;
+}
+
 body:not(.is-landscape-video) #btnMenuFullscreen,
 body:not(.is-landscape-video) #btnLandscapeFullscreenOverlay {
+  display: none !important;
+}
+
+/* Nút Play / Pause chính giữa video chuẩn TikTok (cùng bộ icon SVG trắng đồng bộ) */
+.tt-portrait-center-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.92);
+  z-index: 16;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+body:not(.is-playing) .tt-portrait-center-play,
+.tt-portrait-center-play.flash-show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+
+body.landscape-fullscreen-active .tt-portrait-center-play {
   display: none !important;
 }
 
@@ -886,7 +924,7 @@ body.ambient-switching .ambient-stage-canvas {
   transition: align-items 0.25s ease;
 }
 
-/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm bên phải căn NGANG GIỮA video */
+/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm nút phải vẫn nằm góc dưới chuẩn TikTok */
 .tt-stage-cluster.is-landscape-stage,
 .tt-stage-cluster:has(.is-landscape-16-9) {
   align-items: center;
@@ -894,8 +932,8 @@ body.ambient-switching .ambient-stage-canvas {
 
 .tt-stage-cluster.is-landscape-stage .tt-action-rail,
 .tt-stage-cluster:has(.is-landscape-16-9) .tt-action-rail {
-  align-self: center;
-  padding-bottom: 0;
+  align-self: flex-end;
+  padding-bottom: 12px;
 }
 
 .tt-stage-cluster.is-landscape-stage .tt-nav-arrows,
@@ -1239,13 +1277,9 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
   text-overflow: ellipsis;
 }
 
+/* Thanh tiến trình ẩn đi giống TikTok để không chiếm chỗ dưới đáy khung hình */
 .tt-player-bar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  display: none !important;
 }
 
 .tt-play-btn {
@@ -1254,7 +1288,11 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
   color: #fff;
   font-size: 14px;
   cursor: pointer;
-  width: 22px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tt-time {
@@ -1265,8 +1303,8 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
 
 .tt-seekbar {
   flex: 1;
-  accent-color: var(--tt-red);
-  height: 4px;
+  accent-color: #fff;
+  height: 3px;
   cursor: pointer;
 }
 
@@ -1282,102 +1320,114 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
   cursor: pointer;
 }
 
-/* Cột nút Action Rail bên phải chế độ thường: Dàn tự nhiên theo flexbox như cũ */
+/* Cột nút Action Rail bên phải chuẩn TikTok: Nằm sát góc dưới phải như ảnh mẫu TikTok */
 .tt-action-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 11px;
-  padding-bottom: 8px;
+  gap: 14px;
+  padding-bottom: 12px;
   z-index: 8;
   position: relative;
 }
 
 .rail-avatar-wrap {
   position: relative;
-  width: 46px;
-  height: 46px;
-  margin-bottom: 4px;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
   cursor: pointer;
   transition: transform 0.15s;
 }
 
 .rail-avatar-wrap:hover {
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
 .rail-avatar {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .rail-follow-plus {
   position: absolute;
-  bottom: -6px;
+  bottom: -7px;
   left: 50%;
   transform: translateX(-50%);
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
   border-radius: 50%;
   background: var(--tt-red);
   color: #fff;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
 }
 
 .rail-btn {
   background: none;
   border: none;
-  color: var(--text-main);
+  color: #fff;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
   cursor: pointer;
   text-decoration: none;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .rail-icon-circle {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
+  background: transparent;
+  border: none;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  transition: transform 0.15s, background 0.15s;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
+  transition: transform 0.15s ease, color 0.15s ease;
 }
 
-.rail-btn:hover .rail-icon-circle {
-  background: rgba(255, 255, 255, 0.18);
-  transform: scale(1.06);
+.rail-btn:hover .rail-icon-circle,
+.rail-btn:active .rail-icon-circle {
+  transform: scale(1.1);
 }
 
-.rail-btn.active .rail-icon-circle,
 .rail-btn.favorited .rail-icon-circle {
-  background: rgba(254, 44, 85, 0.24);
-  border: 1px solid rgba(254, 44, 85, 0.55);
+  color: #fe2c55 !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.rail-btn.active .rail-icon-circle {
+  color: #face15 !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 .rail-spinning-disc {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: radial-gradient(circle, #222 0%, #090909 100%);
+  background: radial-gradient(circle, #2a2a2a 0%, #111 65%, #050505 100%);
   padding: 7px;
-  border: 2px solid rgba(255, 255, 255, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
   cursor: pointer;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .rail-spinning-disc.playing {
@@ -2191,10 +2241,41 @@ body.is-playing:not(.topbar-reveal) .tt-floating-Controls > * {
   color: #fff;
 }
 
-/* ---------- Nút 3 chấm & menu trong video (giống TikTok) ---------- */
-.tt-more-btn {
+/* ---------- Nút 3 chấm & nút danh sách phát góc trên (giống TikTok) ---------- */
+.frame-top-right-actions {
   pointer-events: auto;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tt-top-queue-icon-btn {
+  display: none;
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.tt-top-queue-icon-btn:hover,
+.tt-top-queue-icon-btn:active {
+  background: rgba(254, 44, 85, 0.75);
+  transform: scale(0.95);
+}
+
+.tt-more-btn {
+  pointer-events: auto;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -2219,18 +2300,30 @@ body.is-playing:not(.topbar-reveal) .tt-floating-Controls > * {
 
 .tt-more-menu {
   position: absolute;
-  top: 54px;
+  top: 52px;
   right: 12px;
-  width: min(300px, calc(100% - 24px));
-  max-height: calc(100% - 70px);
+  width: min(296px, calc(100% - 24px));
+  max-height: min(215px, 34dvh);
   overflow-y: auto;
-  background: rgba(30, 30, 34, 0.96);
-  backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  background: rgba(26, 26, 32, 0.96);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
   padding: 6px 0;
-  z-index: 30;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  z-index: 45;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.72);
+}
+
+.tt-more-menu::-webkit-scrollbar {
+  width: 5px;
+}
+
+.tt-more-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 99px;
 }
 
 .menu-row {
@@ -2740,8 +2833,14 @@ body.queue-overlay-open .tt-overlay-backdrop {
     transform: translateX(0);
   }
 
-  .tt-floating-Controls {
-    left: 58px;
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  #frameDolbyBadge {
+    display: none !important;
+  }
+
+  .tt-top-queue-icon-btn {
+    display: inline-flex !important;
   }
 
   .dolby-popover {
@@ -2770,6 +2869,16 @@ body.queue-overlay-open .tt-overlay-backdrop {
 @media (max-width: 600px) {
   .tt-center-main {
     padding: 0 !important;
+  }
+
+  .tt-floating-Controls,
+  .tt-nav-arrows,
+  #frameDolbyBadge {
+    display: none !important;
+  }
+
+  .tt-top-queue-icon-btn {
+    display: inline-flex !important;
   }
 
   .tt-stage-cluster,
@@ -2828,62 +2937,42 @@ body.queue-overlay-open .tt-overlay-backdrop {
 
   .tt-landscape-fs-btn {
     top: auto;
-    bottom: calc(168px + env(safe-area-inset-bottom));
-    left: 14px;
+    bottom: calc(118px + env(safe-area-inset-bottom));
+    left: 12px;
     right: auto;
     padding: 8px 15px;
     font-size: 13px;
   }
 
+  /* Đưa cột nút Yêu thích, Lưu nhạc, Cùng nhạc & Đĩa nhạc xuống sát góc dưới phải giống hệt TikTok */
   .tt-action-rail {
-    position: absolute;
+    position: absolute !important;
     left: auto !important;
-    right: 8px !important;
-    bottom: calc(136px + env(safe-area-inset-bottom)) !important;
+    right: 10px !important;
+    bottom: calc(14px + env(safe-area-inset-bottom)) !important;
     top: auto !important;
     transform: none !important;
-    gap: 8px;
-    z-index: 18;
+    gap: 13px !important;
+    padding-bottom: 0 !important;
+    z-index: 18 !important;
   }
 
   .rail-btn span {
-    font-size: 10px;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92);
   }
 
   .rail-icon-circle {
-    width: 38px;
-    height: 38px;
-    font-size: 16px;
-  }
-
-  .tt-nav-arrows {
-    display: flex;
-    position: absolute;
-    right: 10px;
-    top: 34%;
-    transform: translateY(-50%);
-    z-index: 25;
-    flex-direction: column;
-    gap: 8px;
-    opacity: 0.78;
-    transition: opacity 0.2s;
-  }
-
-  .tt-nav-arrows .tt-arrow-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 12px;
-    background: rgba(14, 14, 22, 0.65);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    width: 36px;
+    height: 36px;
+    background: transparent !important;
+    border: none !important;
+    backdrop-filter: none !important;
   }
 
   .tt-bottom-overlay {
-    padding: 20px 58px calc(10px + env(safe-area-inset-bottom)) 12px;
+    padding: 24px 66px calc(14px + env(safe-area-inset-bottom)) 12px;
   }
 
   .tt-vol-slider,
@@ -2893,21 +2982,30 @@ body.queue-overlay-open .tt-overlay-backdrop {
 
   .frame-top-overlay {
     top: 10px;
-    left: 54px;
+    left: 56px;
     right: 10px;
+    gap: 6px;
   }
 
-  .tt-floating-Controls {
-    top: 50px;
-    right: 8px;
-    left: 8px;
-    justify-content: center;
-    gap: 5px;
+  .now-playing-pill {
+    max-width: calc(100vw - 154px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.95 !important;
+    padding: 5px 11px;
+    font-size: 12px;
   }
 
-  .tt-glass-pill {
-    font-size: 10.5px;
-    padding: 4px 8px;
+  .now-playing-pill #currentFeedSourceLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-playing .tt-phone-frame:not(:hover) .tt-top-queue-icon-btn,
+  body.is-playing .tt-phone-frame:not(:hover) .tt-more-btn {
+    opacity: 0.88;
   }
 
   .channel-videos-grid {
@@ -2943,17 +3041,409 @@ body.queue-overlay-open .tt-overlay-backdrop {
   }
 }
 
-/* Chế độ xoay ngang toàn màn hình cho video 16:9 trên điện thoại */
+/* =====================================================================
+   GIAO DIỆN PHÓNG TO XOAY NGANG 16:9 CHUẨN TIKTOK (NHƯ ẢNH MẪU TIKTOK)
+   ===================================================================== */
+.tt-landscape-hud {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.68) 0%,
+    rgba(0, 0, 0, 0.18) 22%,
+    transparent 35%,
+    transparent 62%,
+    rgba(0, 0, 0, 0.25) 76%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.24s ease;
+}
+
+.tt-landscape-hud.hud-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.tt-landscape-hud.hud-hidden * {
+  pointer-events: none !important;
+}
+
+.ls-hud-top {
+  padding: 14px max(22px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ls-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.ls-back-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 0.9;
+  padding: 0 6px 4px 0;
+  cursor: pointer;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+.ls-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ls-title-text {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.ls-title-wrap.expanded .ls-title-text {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.ls-title-more {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.ls-more-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 2px 6px;
+  cursor: pointer;
+  margin-left: auto;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+.ls-creator-pill {
+  align-self: flex-start;
+  margin-left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(22, 22, 28, 0.62);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 4px 6px 4px 5px;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ls-creator-pill:hover {
+  background: rgba(35, 35, 45, 0.82);
+}
+
+.ls-creator-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.ls-creator-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-creator-plus {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fe2c55;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ls-center-play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.ls-center-play-btn:active {
+  transform: translate(-50%, -50%) scale(0.92);
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.ls-hud-bottom {
+  padding: 0 max(22px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.ls-time-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.ls-time-sep,
+.ls-time-duration {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ls-seekbar {
+  width: 100%;
+  height: 4px;
+  accent-color: #fff;
+  cursor: pointer;
+  margin: 2px 0 5px;
+}
+
+.ls-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ls-actions-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ls-actions-left,
+.ls-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.ls-action-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: transform 0.15s, color 0.15s;
+}
+
+.ls-action-btn:active {
+  transform: scale(0.94);
+}
+
+.ls-action-btn.active {
+  color: #fe2c55;
+}
+
+.ls-act-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.ls-badge-btn {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ls-badge-btn:hover,
+.ls-badge-btn.active {
+  background: rgba(254, 44, 85, 0.7);
+  border-color: rgba(254, 44, 85, 0.9);
+}
+
+.ls-speed-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.ls-exit-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Chế độ xoay ngang toàn màn hình cho video 16:9: Bật HUD chuẩn TikTok + Quầng sáng Ambient FULL MÀN HÌNH 2 bên (Trái & Phải) */
 body.landscape-fullscreen-active .tt-floating-Controls,
 body.landscape-fullscreen-active .tt-mobile-menu-btn,
-body.landscape-fullscreen-active .tt-nav-arrows {
+body.landscape-fullscreen-active .tt-nav-arrows,
+body.landscape-fullscreen-active .frame-top-overlay,
+body.landscape-fullscreen-active .tt-bottom-overlay,
+body.landscape-fullscreen-active .tt-action-rail,
+body.landscape-fullscreen-active .tt-landscape-fs-btn {
   display: none !important;
 }
 
-body.landscape-fullscreen-active .tt-center-main,
-body.landscape-fullscreen-active .tt-stage-cluster,
+body.landscape-fullscreen-active {
+  background: #050508 !important;
+}
+
+body.landscape-fullscreen-active:not(.ambient-off) .ambient-backdrop-canvas {
+  display: block !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: scale(1.22) !important;
+  transform-origin: center center !important;
+  z-index: 0 !important;
+  opacity: 0.96 !important;
+  filter: blur(52px) saturate(250%) brightness(1.28) !important;
+  pointer-events: none !important;
+}
+
+/* Ghi đè triệt để transform: translate(-50%, -50%) của chế độ thường để Ambient phủ FULL 100% màn hình cả Trái lẫn Phải */
+body.landscape-fullscreen-active:not(.ambient-off) .ambient-stage-canvas,
+body.landscape-fullscreen-active:not(.ambient-off) .tt-stage-cluster.is-landscape-stage .ambient-stage-canvas,
+body.landscape-fullscreen-active:not(.ambient-off) .tt-stage-cluster:has(.is-landscape-16-9) .ambient-stage-canvas {
+  display: block !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  border-radius: 0 !important;
+  transform: scale(1.18) !important;
+  transform-origin: center center !important;
+  z-index: 0 !important;
+  opacity: 0.96 !important;
+  filter: blur(42px) saturate(245%) brightness(1.25) !important;
+  pointer-events: none !important;
+}
+
+body.landscape-fullscreen-active.ambient-soft .ambient-backdrop-canvas,
+body.landscape-fullscreen-active.ambient-soft .ambient-stage-canvas {
+  opacity: 0.62 !important;
+  filter: blur(48px) saturate(180%) brightness(1.02) !important;
+}
+
+body.landscape-fullscreen-active .tt-center-main {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 70 !important;
+  background: transparent !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.landscape-fullscreen-active .tt-stage-cluster::before {
+  display: none !important;
+}
+
+body.landscape-fullscreen-active .tt-stage-cluster {
+  position: relative !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  z-index: 1 !important;
+}
+
 body.landscape-fullscreen-active .tt-phone-frame,
 body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 {
+  position: relative !important;
   width: 100vw !important;
   height: 100dvh !important;
   max-width: 100vw !important;
@@ -2961,64 +3451,73 @@ body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 {
   padding: 0 !important;
   margin: 0 !important;
   border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
   aspect-ratio: auto !important;
+  background: transparent !important;
+  z-index: 5 !important;
 }
 
-body.landscape-fullscreen-active .video-container video {
+body.landscape-fullscreen-active .video-container,
+body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 .video-container {
+  position: relative !important;
   width: 100vw !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
-  object-fit: contain !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  z-index: 5 !important;
 }
 
-body.landscape-fullscreen-active .tt-landscape-fs-btn {
-  top: 12px !important;
-  right: 56px !important;
-  left: auto !important;
-  bottom: auto !important;
+body.landscape-fullscreen-active #mainVideoPlayer,
+body.landscape-fullscreen-active .video-container video,
+body.landscape-fullscreen-active .tt-phone-frame.is-landscape-16-9 #mainVideoPlayer {
+  position: relative !important;
+  z-index: 6 !important;
+  width: min(100vw, calc(100dvh * 16 / 9)) !important;
+  height: min(100dvh, calc(100vw * 9 / 16)) !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  aspect-ratio: 16 / 9 !important;
+  object-fit: cover !important;
+  background: transparent !important;
+  margin: auto !important;
 }
 
-/* Màn hình thấp (điện thoại xoay ngang 16:9) */
-@media (max-height: 560px) {
-  .tt-floating-Controls {
-    display: none !important;
-  }
-  .tt-phone-frame,
-  .tt-phone-frame.is-landscape-16-9 {
-    width: 100vw !important;
-    height: 100dvh !important;
-    max-width: 100vw !important;
-    max-height: 100dvh !important;
-    border-radius: 0 !important;
-  }
-  .tt-phone-frame.is-landscape-16-9 .video-container video {
-    width: 100vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    object-fit: contain !important;
-  }
-  .tt-action-rail {
-    position: absolute !important;
-    right: 10px !important;
-    bottom: 58px !important;
-    gap: 6px !important;
-    z-index: 20;
-  }
-  .rail-icon-circle {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
-  .rail-btn span,
-  .rail-spinning-disc {
-    display: none !important;
-  }
-  .tt-bottom-overlay {
-    padding: 8px 54px 8px 14px !important;
-  }
-  .tt-caption-wrap,
-  .tt-hashtags-row,
-  .tt-music-marquee {
-    display: none !important;
-  }
+body.frame-blend-on.landscape-fullscreen-active:not(.ambient-off) #mainVideoPlayer,
+body.frame-blend-on.landscape-fullscreen-active:not(.ambient-off) .video-container video {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.72) 2.5%,
+    #000 6.5%,
+    #000 93.5%,
+    rgba(0, 0, 0, 0.72) 97.5%,
+    transparent 100%
+  ) !important;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.72) 2.5%,
+    #000 6.5%,
+    #000 93.5%,
+    rgba(0, 0, 0, 0.72) 97.5%,
+    transparent 100%
+  ) !important;
+}
+
+body.landscape-fullscreen-active .tt-landscape-hud {
+  display: flex !important;
+  z-index: 24 !important;
+}
+
+body.landscape-fullscreen-active .tt-more-menu {
+  top: 48px !important;
+  right: max(18px, env(safe-area-inset-right)) !important;
+  max-height: min(200px, 50dvh) !important;
+  z-index: 60 !important;
 }

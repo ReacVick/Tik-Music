@@ -252,6 +252,7 @@ const dom = {
   btnMenuFullscreen: document.getElementById('btnMenuFullscreen'),
   btnFullscreenTop: document.getElementById('btnFullscreenTop'),
   btnFullscreenBar: document.getElementById('btnFullscreenBar'),
+  btnPortraitCenterPlay: document.getElementById('btnPortraitCenterPlay'),
   btnLandscapeFullscreenOverlay: document.getElementById('btnLandscapeFullscreenOverlay'),
   btnCaptionMore: document.getElementById('btnCaptionMore'),
   landscapeHud: document.getElementById('landscapeHud'),
@@ -862,6 +863,19 @@ function selectDolbyPreset(presetKey) {
 // ============================================================================
 let ambientIntervalId = null;
 
+function drawSymmetricAmbientSource(ctx, sourceEl, w, h) {
+  if (!ctx || !sourceEl) return;
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(sourceEl, 0, 0, w, h);
+  // Pha trộn thêm lớp đối xứng gương ngang (42%) để dù khung hình video tối 1 bên thì quầng sáng Ambient vẫn lan tỏa đều trọn vẹn cả 2 bên Trái & Phải
+  ctx.save();
+  ctx.globalAlpha = 0.42;
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(sourceEl, 0, 0, w, h);
+  ctx.restore();
+}
+
 function renderAmbientFrame() {
   if (state.ambientMode === 'off' || document.hidden) return;
   if (!dom.videoPlayer || dom.videoPlayer.paused || dom.videoPlayer.ended || dom.videoPlayer.readyState < 2) return;
@@ -870,22 +884,18 @@ function renderAmbientFrame() {
   try {
     const backdropCtx = dom.ambientBackdropCanvas?.getContext('2d');
     if (backdropCtx) {
-      backdropCtx.globalAlpha = 1.0;
-      backdropCtx.drawImage(
+      drawSymmetricAmbientSource(
+        backdropCtx,
         dom.videoPlayer,
-        0,
-        0,
         dom.ambientBackdropCanvas.width,
         dom.ambientBackdropCanvas.height
       );
     }
     const stageCtx = dom.ambientStageCanvas?.getContext('2d');
     if (stageCtx) {
-      stageCtx.globalAlpha = 1.0;
-      stageCtx.drawImage(
+      drawSymmetricAmbientSource(
+        stageCtx,
         dom.videoPlayer,
-        0,
-        0,
         dom.ambientStageCanvas.width,
         dom.ambientStageCanvas.height
       );
@@ -910,12 +920,10 @@ function drawCoverToAmbientCanvases(imgUrl) {
       const backdropCtx = dom.ambientBackdropCanvas?.getContext('2d');
       const stageCtx = dom.ambientStageCanvas?.getContext('2d');
       if (backdropCtx) {
-        backdropCtx.globalAlpha = 1.0;
-        backdropCtx.drawImage(img, 0, 0, dom.ambientBackdropCanvas.width, dom.ambientBackdropCanvas.height);
+        drawSymmetricAmbientSource(backdropCtx, img, dom.ambientBackdropCanvas.width, dom.ambientBackdropCanvas.height);
       }
       if (stageCtx) {
-        stageCtx.globalAlpha = 1.0;
-        stageCtx.drawImage(img, 0, 0, dom.ambientStageCanvas.width, dom.ambientStageCanvas.height);
+        drawSymmetricAmbientSource(stageCtx, img, dom.ambientStageCanvas.width, dom.ambientStageCanvas.height);
       }
     } catch (_) {}
   };
@@ -1042,6 +1050,7 @@ function showAutoScrollToast(message = '📲 Đang tự động cuộn sang bài
 async function initApp() {
   loadLocalState();
   bindEvents();
+  initSystemMediaSessionHandlers();
   initAmbientLightEngine();
   applyAmbientModeUI();
   applyFrameBlendUI();
@@ -1435,12 +1444,9 @@ function restoreSnapshot(snap) {
 }
 
 function handlePopState(e) {
-  // Nếu đang ở chế độ phóng to xoay ngang 16:9, thao tác Back sẽ chỉ thoát phóng to ngang mà KHÔNG nhảy lùi về video trước!
-  if (document.body.classList.contains('landscape-fullscreen-active')) {
-    exitLandscapeFullscreen();
-    if (state.currentTrack) {
-      pushRoute({ page: 'player', trackId: state.currentTrack.id }, 'push');
-    }
+  // Nếu đang ở chế độ phóng to xoay ngang 16:9, thao tác Back trên điện thoại sẽ thoát về ngay giao diện dọc ĐẦY ĐỦ của đúng video đang xem!
+  if (document.body.classList.contains('landscape-fullscreen-active') || Boolean(document.fullscreenElement)) {
+    exitLandscapeFullscreen(true);
     return;
   }
 
@@ -1465,7 +1471,8 @@ function handlePopState(e) {
     return;
   }
 
-  // Trang trình phát: khôi phục đúng danh sách & đúng video trước đó
+  // Trang trình phát: luôn đảm bảo thoát hoàn toàn trạng thái phóng to ngang và hiển thị đầy đủ giao diện của video
+  document.body.classList.remove('landscape-fullscreen-active');
   if (snap) restoreSnapshot(snap);
   showStage('player');
 
@@ -1478,11 +1485,13 @@ function handlePopState(e) {
       state.currentTrack && String(state.currentTrack.id) === String(list[idx].id);
     if (isAlreadyPlaying) {
       state.currentIndex = idx;
+      applyVideoAspectRatio();
       renderQueueList();
     } else {
       playTrackAtIndex(idx, true, { history: 'none' });
     }
   } else {
+    applyVideoAspectRatio();
     renderQueueList();
   }
 }
@@ -1633,33 +1642,45 @@ function revealLandscapeHud(autoHide = true) {
 function enterLandscapeFullscreen() {
   document.body.classList.add('landscape-fullscreen-active');
   revealLandscapeHud(true);
+
+  // Ghi một trạng thái lịch sử riêng cho chế độ phóng to ngang để khi vuốt Back trên điện thoại sẽ quay về ngay giao diện dọc đầy đủ
   try {
-    if (window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function') {
-      window.AndroidBridge.setLandscape(true);
+    if (!history.state || !history.state.landscapeFs) {
+      const baseState = history.state || { page: 'player', trackId: state.currentTrack?.id };
+      history.pushState({ ...baseState, landscapeFs: true }, '', location.href);
     }
   } catch (_) {}
 
-  const target = document.documentElement;
-  if (!document.fullscreenElement) {
-    if (target.requestFullscreen) {
-      target.requestFullscreen().then(() => {
+  const hasAndroidBridge = Boolean(window.AndroidBridge && typeof window.AndroidBridge.setLandscape === 'function');
+  if (hasAndroidBridge) {
+    try {
+      window.AndroidBridge.setLandscape(true);
+    } catch (_) {}
+  } else {
+    const target = document.documentElement;
+    if (!document.fullscreenElement) {
+      if (target.requestFullscreen) {
+        target.requestFullscreen().then(() => {
+          try {
+            screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+          } catch (_) {}
+        }).catch(() => {});
+      } else if (target.webkitRequestFullscreen) {
         try {
-          screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+          target.webkitRequestFullscreen();
         } catch (_) {}
-      }).catch(() => {});
-    } else if (target.webkitRequestFullscreen) {
-      try {
-        target.webkitRequestFullscreen();
-      } catch (_) {}
+      }
     }
+    try {
+      screen.orientation?.lock?.('landscape')?.catch?.(() => {});
+    } catch (_) {}
   }
-  try {
-    screen.orientation?.lock?.('landscape')?.catch?.(() => {});
-  } catch (_) {}
   syncFullscreenUI();
+  renderAmbientFrame();
 }
 
-function exitLandscapeFullscreen() {
+function exitLandscapeFullscreen(fromPopState = false) {
+  const wasActive = document.body.classList.contains('landscape-fullscreen-active');
   document.body.classList.remove('landscape-fullscreen-active');
   clearTimeout(lsHudTimer);
   dom.landscapeHud?.classList.remove('hud-hidden');
@@ -1672,9 +1693,21 @@ function exitLandscapeFullscreen() {
     screen.orientation?.unlock?.();
   } catch (_) {}
   if (document.fullscreenElement) {
-    document.exitFullscreen?.().catch(() => {});
+    try {
+      document.exitFullscreen?.().catch?.(() => {});
+    } catch (_) {}
   }
+  if (!fromPopState && wasActive && history.state?.landscapeFs) {
+    try {
+      const cleanState = { ...history.state };
+      delete cleanState.landscapeFs;
+      history.replaceState(cleanState, '', location.href);
+    } catch (_) {}
+  }
+  showStage('player');
+  applyVideoAspectRatio();
   syncFullscreenUI();
+  renderAmbientFrame();
 }
 window.exitLandscapeFullscreen = exitLandscapeFullscreen;
 
@@ -2902,16 +2935,40 @@ function togglePlayPause() {
   if (!dom.videoPlayer.src) return;
   dolbyEngine.init();
   if (dom.videoPlayer.paused) {
+    state.userPausedManually = false;
     dom.videoPlayer.play().catch(() => {});
   } else {
+    state.userPausedManually = true;
     dom.videoPlayer.pause();
   }
 }
 
+const ICON_PLAY_SVG_SM = '<svg class="icon-svg-play" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 5.5v13l11-6.5-11-6.5z"/></svg>';
+const ICON_PAUSE_SVG_SM = '<svg class="icon-svg-pause" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
+const ICON_PLAY_SVG_LG = '<svg class="icon-svg-play" viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M7 5.5v13l11-6.5-11-6.5z"/></svg>';
+const ICON_PAUSE_SVG_LG = '<svg class="icon-svg-pause" viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
+
+let _centerPlayFlashTimer = null;
+function flashPortraitCenterPlayBtn() {
+  if (!dom.btnPortraitCenterPlay) return;
+  dom.btnPortraitCenterPlay.classList.add('flash-show');
+  clearTimeout(_centerPlayFlashTimer);
+  _centerPlayFlashTimer = setTimeout(() => {
+    dom.btnPortraitCenterPlay?.classList.remove('flash-show');
+  }, 550);
+}
+
 function updatePlayingUI(isPlaying) {
   document.body.classList.toggle('is-playing', Boolean(isPlaying));
-  dom.btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
-  if (dom.btnLsCenterPlay) dom.btnLsCenterPlay.textContent = isPlaying ? '⏸' : '▶';
+  if (dom.btnPlayPause) {
+    dom.btnPlayPause.innerHTML = isPlaying ? ICON_PAUSE_SVG_SM : ICON_PLAY_SVG_SM;
+  }
+  if (dom.btnLsCenterPlay) {
+    dom.btnLsCenterPlay.innerHTML = isPlaying ? ICON_PAUSE_SVG_LG : ICON_PLAY_SVG_LG;
+  }
+  if (dom.btnPortraitCenterPlay) {
+    dom.btnPortraitCenterPlay.innerHTML = isPlaying ? ICON_PAUSE_SVG_LG : ICON_PLAY_SVG_LG;
+  }
   dom.vinylDisc.classList.toggle('spinning', isPlaying);
   dom.audioEqualizer.classList.toggle('paused', !isPlaying);
   if (dom.railSpinningDisc) {
@@ -2920,6 +2977,133 @@ function updatePlayingUI(isPlaying) {
   if (document.body.classList.contains('landscape-fullscreen-active')) {
     revealLandscapeHud(Boolean(isPlaying));
   }
+  syncSystemMediaSession(Boolean(isPlaying));
+}
+
+// ============================================================================
+// ĐỒNG BỘ MEDIA SESSION HỆ THỐNG & ĐẢO ORIGIN (VIVO ORIGIN OS 6 / ANDROID APK)
+// Giúp nhạc chạy ngầm liên tục khi thoát ứng dụng & hiển thị viên thuốc điều khiển trên Đảo Origin
+// ============================================================================
+let _lastBridgeSyncMs = 0;
+
+function syncSystemMediaSession(isPlayingOverride = null, throttled = false) {
+  const now = Date.now();
+  if (throttled && now - _lastBridgeSyncMs < 1200) return;
+  _lastBridgeSyncMs = now;
+
+  const track = state.currentTrack || getActiveListForCurrentView()[state.currentIndex];
+  if (!track) return;
+
+  const isPlaying =
+    isPlayingOverride !== null
+      ? Boolean(isPlayingOverride)
+      : Boolean(dom.videoPlayer && !dom.videoPlayer.paused && !dom.videoPlayer.ended);
+
+  const title = (track.desc || track.music?.title || 'TikTok Music Clean').replace(/#[\p{L}\p{N}_]+/gu, '').trim() || track.music?.title || 'TikTok Music Clean';
+  const artist = `@${track.author?.username || track.author?.uniqueId || 'tiktok'} · ${track.author?.nickname || track.music?.author || 'TikTok Music'}`;
+  const coverUrl =
+    track.video?.cover ||
+    track.cover ||
+    track.music?.cover ||
+    track.author?.avatar ||
+    '';
+
+  const curSec = Number(dom.videoPlayer?.currentTime) || 0;
+  const durSec = Number(dom.videoPlayer?.duration) || Number(track.video?.duration) || Number(track.duration) || 0;
+  const posMs = Math.max(0, Math.floor(curSec * 1000));
+  const durMs = Math.max(0, Math.floor(durSec * 1000));
+
+  // 1. Gửi sang Native Android Service (hiển thị trực tiếp lên Đảo Origin của Vivo OriginOS 6 & Màn hình khóa)
+  try {
+    if (window.AndroidBridge && typeof window.AndroidBridge.updateMediaState === 'function') {
+      window.AndroidBridge.updateMediaState(title, artist, coverUrl, isPlaying, posMs, durMs);
+    }
+  } catch (_) {}
+
+  // 2. Đồng bộ chuẩn Web MediaSession API cho trình duyệt di động & máy tính
+  if ('mediaSession' in navigator) {
+    try {
+      if (!throttled || !navigator.mediaSession.metadata) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title,
+          artist,
+          album: 'TikTok Music Clean',
+          artwork: coverUrl
+            ? [
+                { src: coverUrl, sizes: '96x96', type: 'image/jpeg' },
+                { src: coverUrl, sizes: '256x256', type: 'image/jpeg' },
+                { src: coverUrl, sizes: '512x512', type: 'image/jpeg' },
+              ]
+            : [],
+        });
+      }
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      if (durSec > 0 && Number.isFinite(durSec) && typeof navigator.mediaSession.setPositionState === 'function') {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(durSec, curSec),
+          playbackRate: Number(dom.videoPlayer?.playbackRate) || 1,
+          position: Math.min(curSec, durSec),
+        });
+      }
+    } catch (_) {}
+  }
+}
+
+function initSystemMediaSessionHandlers() {
+  window.__apkMediaControl = function (action, value) {
+    if (!dom.videoPlayer) return;
+    if (action === 'play') {
+      state.userPausedManually = false;
+      dolbyEngine.ctx?.resume?.().catch(() => {});
+      dom.videoPlayer.play().catch(() => {});
+    } else if (action === 'pause') {
+      state.userPausedManually = true;
+      dom.videoPlayer.pause();
+    } else if (action === 'toggle') {
+      togglePlayPause();
+    } else if (action === 'next') {
+      state.userPausedManually = false;
+      playNextTrack(false);
+    } else if (action === 'prev') {
+      state.userPausedManually = false;
+      if (state.currentIndex > 0) {
+        playPrevTrack(false);
+      } else {
+        dom.videoPlayer.currentTime = 0;
+        dom.videoPlayer.play().catch(() => {});
+      }
+    } else if (action === 'seek') {
+      const targetSec = Number(value) || 0;
+      if (Number.isFinite(targetSec) && targetSec >= 0) {
+        dom.videoPlayer.currentTime = targetSec;
+        syncSystemMediaSession(null, false);
+      }
+    }
+  };
+
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler('play', () => window.__apkMediaControl('play'));
+      navigator.mediaSession.setActionHandler('pause', () => window.__apkMediaControl('pause'));
+      navigator.mediaSession.setActionHandler('previoustrack', () => window.__apkMediaControl('prev'));
+      navigator.mediaSession.setActionHandler('nexttrack', () => window.__apkMediaControl('next'));
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details && details.seekTime !== undefined) {
+          window.__apkMediaControl('seek', details.seekTime);
+        }
+      });
+    } catch (_) {}
+  }
+
+  // Giữ luồng nhạc chạy ngầm không bị ngắt khi người dùng thoát ra màn hình chính hoặc khóa máy
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !state.userPausedManually && dom.videoPlayer && dom.videoPlayer.src) {
+      dolbyEngine.ctx?.resume?.().catch(() => {});
+      if (dom.videoPlayer.paused && !dom.videoPlayer.ended) {
+        dom.videoPlayer.play().catch(() => {});
+      }
+    }
+  });
 }
 
 function setPlayMode(mode, save = true) {
@@ -3081,18 +3265,14 @@ function toggleSavedTrack(track) {
 function updateTrackActionButtonsUI(trackId) {
   const targetId = String(trackId);
   const isFav = state.favorites.some((f) => String(f.id) === targetId);
-  if (dom.favIcon) dom.favIcon.textContent = isFav ? '❤️' : '🤍';
   dom.btnToggleFavorite?.classList.toggle('favorited', isFav);
   if (dom.railFavLabel) dom.railFavLabel.textContent = isFav ? 'Đã thích' : 'Yêu thích';
-  if (dom.lsFavIcon) dom.lsFavIcon.textContent = isFav ? '❤️' : '🤍';
   if (dom.lsFavText) dom.lsFavText.textContent = isFav ? 'Đã thích' : 'Yêu thích';
   dom.btnLsFavorite?.classList.toggle('active', isFav);
 
   const isSaved = state.savedTracks.some((s) => String(s.id) === targetId);
-  if (dom.savedIcon) dom.savedIcon.textContent = isSaved ? '🔖' : '📑';
   dom.btnToggleSaved?.classList.toggle('active', isSaved);
   if (dom.railSavedLabel) dom.railSavedLabel.textContent = isSaved ? 'Đã lưu' : 'Lưu nhạc';
-  if (dom.lsSavedIcon) dom.lsSavedIcon.textContent = isSaved ? '🔖' : '📑';
   if (dom.lsSavedText) dom.lsSavedText.textContent = isSaved ? 'Đã lưu' : 'Lưu nhạc';
   dom.btnLsSaved?.classList.toggle('active', isSaved);
 }
@@ -3293,11 +3473,18 @@ function bindEvents() {
     dom.videoMoreMenu?.classList.add('hidden');
     toggleFullscreen();
   });
-  document.addEventListener('fullscreenchange', () => {
-    // Giữ nguyên chế độ landscape-fullscreen-active trên điện thoại kể cả khi người dùng kéo thanh thông báo xuống,
-    // chỉ thoát khi người dùng chủ động bấm nút Thoát (< hoặc 🗗)!
+  const handleNativeFullscreenChange = () => {
+    // Khi người dùng bấm nút Back trên điện thoại để thoát Fullscreen, tự động thoát chế độ landscape-fullscreen-active
+    // để trả về ngay lập tức giao diện video dọc ĐẦY ĐỦ (không bao giờ bị kẹt ở bản thiếu)!
+    const isNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!isNativeFs && document.body.classList.contains('landscape-fullscreen-active')) {
+      exitLandscapeFullscreen();
+      return;
+    }
     syncFullscreenUI();
-  });
+  };
+  document.addEventListener('fullscreenchange', handleNativeFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
 
   // Responsive: nút mở menu cột trái & lớp phủ trên màn hình nhỏ
   dom.btnToggleSidebar?.addEventListener('click', () => {
@@ -3376,8 +3563,7 @@ function bindEvents() {
     // Khi đang phóng to xoay ngang 16:9 (Landscape Fullscreen): tắt vuốt dọc chuyển bài để khi kéo thanh thông báo điện thoại không bị nhảy lùi bài!
     if (
       document.body.classList.contains('landscape-fullscreen-active') ||
-      Boolean(document.fullscreenElement) ||
-      window.matchMedia('(max-height: 560px)').matches
+      Boolean(document.fullscreenElement)
     ) {
       isTouchSwiping = false;
       return;
@@ -3668,12 +3854,14 @@ function bindEvents() {
 
   // Trình phát Video / Audio & Tự động nhận diện tỷ lệ thực tế của luồng video (16:9 vs 9:16)
   dom.btnPlayPause?.addEventListener('click', togglePlayPause);
+  dom.btnPortraitCenterPlay?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePlayPause();
+    flashPortraitCenterPlayBtn();
+  });
   dom.videoPlayer?.addEventListener('click', () => {
     // Khi đang ở chế độ phóng to xoay ngang (Landscape HUD): chạm vào video sẽ ẩn/hiện thanh điều khiển giống TikTok
-    if (
-      document.body.classList.contains('landscape-fullscreen-active') ||
-      window.matchMedia('(max-height: 560px)').matches
-    ) {
+    if (document.body.classList.contains('landscape-fullscreen-active')) {
       const isHidden = dom.landscapeHud?.classList.contains('hud-hidden');
       if (isHidden) {
         revealLandscapeHud(true);
@@ -3684,6 +3872,7 @@ function bindEvents() {
       return;
     }
     togglePlayPause();
+    flashPortraitCenterPlayBtn();
   });
   dom.vinylContainer?.addEventListener('click', togglePlayPause);
 
@@ -3697,12 +3886,25 @@ function bindEvents() {
   });
 
   dom.videoPlayer?.addEventListener('play', () => {
+    state.userPausedManually = false;
     dolbyEngine.init();
     dolbyEngine.applyCurrentSettings();
     updatePlayingUI(true);
     renderAmbientFrame();
   });
-  dom.videoPlayer?.addEventListener('pause', () => updatePlayingUI(false));
+  dom.videoPlayer?.addEventListener('pause', () => {
+    // Nếu ứng dụng vừa chuyển sang chạy ngầm (document.hidden) mà người dùng KHÔNG bấm tạm dừng, tự động phát tiếp ngay lập tức!
+    if (document.hidden && !state.userPausedManually && !dom.videoPlayer.ended) {
+      setTimeout(() => {
+        if (document.hidden && !state.userPausedManually && dom.videoPlayer.paused && !dom.videoPlayer.ended) {
+          dolbyEngine.ctx?.resume?.().catch(() => {});
+          dom.videoPlayer.play().catch(() => {});
+        }
+      }, 60);
+      return;
+    }
+    updatePlayingUI(false);
+  });
   dom.videoPlayer?.addEventListener('waiting', () => setLoadingState(true));
   dom.videoPlayer?.addEventListener('playing', () => {
     setLoadingState(false);
@@ -3727,6 +3929,7 @@ function bindEvents() {
       if (dom.lsDurationTime) dom.lsDurationTime.textContent = durStr;
       if (dom.lsSeekBar) dom.lsSeekBar.value = pct;
     }
+    syncSystemMediaSession(null, true);
   });
 
   dom.videoPlayer?.addEventListener('ended', () => {

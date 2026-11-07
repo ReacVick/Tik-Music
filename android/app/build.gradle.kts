@@ -8,11 +8,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.tiktokmusic.clean"
+        // Sử dụng applicationId "com.luna.music" (TikTok/Douyin Music chính thức) nằm trong Whitelist mặc định của Đảo Origin (Origin Island) trên Vivo OriginOS 5 & OriginOS 6
+        applicationId = "com.luna.music"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "2.0.0-OriginOS6"
     }
 
     buildTypes {

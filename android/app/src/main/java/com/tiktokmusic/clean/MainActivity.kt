@@ -1,7 +1,11 @@
 package com.tiktokmusic.clean
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -19,30 +23,61 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import java.lang.ref.WeakReference
+
+/**
+ * KeepAliveWebView: Giữ luồng phát nhạc/video HTML5 & bộ xử lý âm thanh Web Audio Dolby Atmos
+ * chạy ngầm 100% liên tục kể cả khi người dùng thoát ra màn hình chính hoặc tắt màn hình khóa máy.
+ */
+class KeepAliveWebView(context: Context) : WebView(context) {
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        // Luôn báo trạng thái VISIBLE cho nhân Chromium để không bao giờ tự ngắt nhạc khi chạy ngầm
+        super.onWindowVisibilityChanged(View.VISIBLE)
+    }
+}
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webView: WebView
+    companion object {
+        private var activeWebViewRef: WeakReference<WebView>? = null
+
+        fun dispatchMediaAction(action: String, value: String = "0") {
+            val wv = activeWebViewRef?.get() ?: return
+            wv.post {
+                val safeAction = action.replace("'", "")
+                val safeVal = value.replace("'", "")
+                wv.evaluateJavascript(
+                    "window.__apkMediaControl && window.__apkMediaControl('$safeAction', '$safeVal');",
+                    null
+                )
+            }
+        }
+    }
+
+    private lateinit var webView: KeepAliveWebView
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var fullscreenContainer: FrameLayout
     private var isLandscapeLocked: Boolean = false
 
-    // URL ứng dụng: Ưu tiên nạp bản Online Live 24/7 trên Render, tự động fallback về bộ nhớ App nội bộ nếu không có mạng
-    private val ONLINE_URL = "https://tik-music.onrender.com"
+    // Ưu tiên nạp trực tiếp từ CDN tốc độ cao của Hugging Face Space, tự động fallback về bộ nhớ trong của APK nếu mất mạng
+    private val ONLINE_URL = "https://binh007-tik-music.static.hf.space/?v=20261107v7"
     private val OFFLINE_URL = "file:///android_asset/index.html"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Mặc định khung hình dọc chuẩn điện thoại (9:16), chỉ xoay ngang khi người dùng bấm phóng to video 16:9
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
-        // Thiết lập trạng thái toàn màn hình và màu nền tối
         window.statusBarColor = Color.parseColor("#07080d")
         window.navigationBarColor = Color.parseColor("#07080d")
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        requestNotificationPermissionIfNeeded()
+        startOriginMediaService()
 
         val rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#07080d"))
@@ -52,7 +87,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.BLACK)
         }
 
-        webView = WebView(this).apply {
+        webView = KeepAliveWebView(this).apply {
             setBackgroundColor(Color.parseColor("#07080d"))
             isFocusable = true
             isFocusableInTouchMode = true
@@ -61,6 +96,7 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
+        activeWebViewRef = WeakReference(webView)
 
         rootLayout.addView(webView)
         rootLayout.addView(fullscreenContainer)
@@ -70,21 +106,47 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (customView != null) {
-                    hideCustomView()
-                } else if (isLandscapeLocked) {
+                if (customView != null || isLandscapeLocked) {
+                    if (customView != null) {
+                        hideCustomView()
+                    }
                     setLandscapeMode(false)
                     webView.evaluateJavascript("window.exitLandscapeFullscreen && window.exitLandscapeFullscreen();", null)
                 } else if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
-                    finish()
+                    // Khi bấm Back ở màn hình đầu tiên: thu nhỏ ứng dụng xuống chạy ngầm (giống trình phát nhạc thực thụ) thay vì đóng hẳn!
+                    moveTaskToBack(true)
                 }
             }
         })
 
-        // Tải trang web online từ Render, fallback về offline nếu mất mạng
         webView.loadUrl(ONLINE_URL)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    101
+                )
+            }
+        }
+    }
+
+    private fun startOriginMediaService() {
+        try {
+            val serviceIntent = Intent(this, OriginMediaService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun setLandscapeMode(landscape: Boolean) {
@@ -132,6 +194,33 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun setLandscape(landscape: Boolean) {
             setLandscapeMode(landscape)
+        }
+
+        @JavascriptInterface
+        fun updateMediaState(
+            title: String?,
+            artist: String?,
+            coverUrl: String?,
+            isPlaying: Boolean,
+            posMs: Long,
+            durMs: Long
+        ) {
+            try {
+                val intent = Intent(this@MainActivity, OriginMediaService::class.java).apply {
+                    action = OriginMediaService.ACTION_UPDATE
+                    putExtra("title", title ?: "TikTok Music Clean")
+                    putExtra("artist", artist ?: "@tiktok")
+                    putExtra("coverUrl", coverUrl ?: "")
+                    putExtra("isPlaying", isPlaying)
+                    putExtra("posMs", posMs)
+                    putExtra("durMs", durMs)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -204,19 +293,30 @@ class MainActivity : AppCompatActivity() {
         customViewCallback = null
         webView.visibility = View.VISIBLE
         setLandscapeMode(false)
+        webView.evaluateJavascript("window.exitLandscapeFullscreen && window.exitLandscapeFullscreen();", null)
     }
 
     override fun onResume() {
         super.onResume()
         webView.onResume()
+        webView.resumeTimers()
     }
 
     override fun onPause() {
         super.onPause()
-        webView.onPause()
+        // TUYỆT ĐỐI KHÔNG gọi webView.onPause() để nhạc & video vẫn tiếp tục phát ngầm và hiển thị trên Đảo Origin (OriginOS 6) khi thoát ra ngoài!
+        webView.resumeTimers()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        webView.resumeTimers()
     }
 
     override fun onDestroy() {
+        try {
+            stopService(Intent(this, OriginMediaService::class.java))
+        } catch (_: Exception) {}
         webView.destroy()
         super.onDestroy()
     }
