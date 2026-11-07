@@ -1952,49 +1952,37 @@ async function openChannelProfile(usernameInput, forceRefresh = false, showGridI
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
-      const creatorVideos = catalog.filter(v => 
-        (v.author?.username || '').toLowerCase() === cleanUser.toLowerCase() || 
-        (v.author?.nickname || '').toLowerCase().includes(cleanUser.toLowerCase()) ||
-        (v.desc || '').toLowerCase().includes(cleanUser.toLowerCase())
+      let matched = catalog.filter(v => 
+        (v.author?.username || '').toLowerCase() === cleanUser.toLowerCase()
       );
-      if (creatorVideos.length > 0) {
+      if (matched.length === 0) {
+        // Tìm 1 tác giả đơn lẻ có username bắt đầu bằng cleanUser, tuyệt đối không trộn nhiều tác giả
+        const candidate = catalog.find(v => (v.author?.username || '').toLowerCase().startsWith(cleanUser));
+        if (candidate && candidate.author?.username) {
+          const singleUname = candidate.author.username.toLowerCase();
+          matched = catalog.filter(v => (v.author?.username || '').toLowerCase() === singleUname);
+        }
+      }
+      if (matched.length > 0) {
+        const first = matched[0];
         data = {
           profile: {
-            username: cleanUser,
-            nickname: creatorVideos[0].author?.nickname || cleanUser,
-            avatar: creatorVideos[0].author?.avatar || creatorVideos[0].cover,
+            username: first.author?.username || cleanUser,
+            nickname: first.author?.nickname || cleanUser,
+            avatar: first.author?.avatar || first.cover || '',
             followers: 120000,
             following: 5,
             hearts: 1500000,
-            videos: creatorVideos.length
+            videos: matched.length
           },
-          videos: creatorVideos,
-          filterStats: { totalScanned: creatorVideos.length, passed: creatorVideos.length, blocked: { tiktokShop: 0, ads: 0, livestream: 0 } }
+          videos: matched,
+          filterStats: { totalScanned: matched.length, passed: matched.length, blocked: { tiktokShop: 0, ads: 0, livestream: 0 } }
         };
       }
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const catalog = await getStaticCatalog();
-      if (catalog && catalog.length > 0) {
-        data = {
-          profile: {
-            username: cleanUser,
-            nickname: `@${cleanUser}`,
-            avatar: catalog[0]?.cover || '',
-            followers: 150000,
-            following: 20,
-            hearts: 2000000,
-            videos: catalog.length
-          },
-          videos: catalog.slice(0, 30),
-          filterStats: { totalScanned: 30, passed: 30, blocked: { tiktokShop: 0, ads: 0, livestream: 0 } }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      throw new Error(`Không thể tìm thấy video nào trên kênh @${cleanUser}`);
+      throw new Error(`Không tìm thấy video nào của kênh @${cleanUser}`);
     }
 
     const profile = data.profile || {
@@ -2148,6 +2136,57 @@ async function fetchTikWMClientSearch(keyword, count = 30) {
     } catch (e) {}
   }
   return [];
+}
+
+async function fetchTikWMClientUser(username, count = 35) {
+  const clean = String(username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!clean) return null;
+
+  try {
+    const list = await fetchTikWMClientSearch(clean, count);
+    if (Array.isArray(list) && list.length > 0) {
+      // Lọc chặt chẽ 100% video thuộc về duy nhất 1 tác giả
+      let exact = list.filter(v => (v.author?.uniqueId || v.author?.username || '').toLowerCase() === clean);
+      let targetUser = clean;
+
+      if (exact.length === 0) {
+        const counts = new Map();
+        list.forEach(v => {
+          const uid = (v.author?.uniqueId || v.author?.username || '').toLowerCase();
+          if (uid) counts.set(uid, (counts.get(uid) || 0) + 1);
+        });
+        const sorted = [...counts.entries()].sort((a, b) => {
+          const aStarts = a[0].startsWith(clean) ? 10 : 0;
+          const bStarts = b[0].startsWith(clean) ? 10 : 0;
+          return (bStarts + b[1]) - (aStarts + a[1]);
+        });
+        if (sorted.length > 0) {
+          targetUser = sorted[0][0];
+          exact = list.filter(v => (v.author?.uniqueId || v.author?.username || '').toLowerCase() === targetUser);
+        }
+      }
+
+      if (exact.length > 0) {
+        const first = exact[0];
+        return {
+          profile: {
+            id: first.author?.id || targetUser,
+            uniqueId: targetUser,
+            username: targetUser,
+            nickname: first.author?.nickname || targetUser,
+            avatar: first.author?.avatar || first.cover || '',
+            signature: `Kênh TikTok @${targetUser}`,
+            followers: 125000,
+            following: 15,
+            hearts: 2400000,
+            videos: exact.length
+          },
+          videos: exact
+        };
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 let _loadedStaticCatalog = null;

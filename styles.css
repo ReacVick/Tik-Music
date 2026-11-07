@@ -924,16 +924,17 @@ body.ambient-switching .ambient-stage-canvas {
   transition: align-items 0.25s ease;
 }
 
-/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm nút phải vẫn nằm góc dưới chuẩn TikTok */
+/* KHI VIDEO CÓ TỶ LỆ NGANG 16:9 TRONG CHẾ ĐỘ THƯỜNG: Cụm nút phải nằm NGANG GIỮA tầm video chuẩn TikTok */
 .tt-stage-cluster.is-landscape-stage,
 .tt-stage-cluster:has(.is-landscape-16-9) {
   align-items: center;
+  gap: 18px;
 }
 
 .tt-stage-cluster.is-landscape-stage .tt-action-rail,
 .tt-stage-cluster:has(.is-landscape-16-9) .tt-action-rail {
-  align-self: flex-end;
-  padding-bottom: 12px;
+  align-self: center;
+  padding-bottom: 0;
 }
 
 .tt-stage-cluster.is-landscape-stage .tt-nav-arrows,
@@ -1388,42 +1389,50 @@ body.frame-blend-on .tt-phone-frame:hover .tt-bottom-overlay {
 }
 
 .rail-icon-circle {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
-  transition: transform 0.15s ease, color 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rail-icon-circle .tt-rail-svg {
+  width: 22px;
+  height: 22px;
 }
 
 .rail-btn:hover .rail-icon-circle,
 .rail-btn:active .rail-icon-circle {
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(1.08);
 }
 
 .rail-btn.favorited .rail-icon-circle {
   color: #fe2c55 !important;
-  background: transparent !important;
-  border: none !important;
+  background: rgba(254, 44, 85, 0.18) !important;
+  border-color: rgba(254, 44, 85, 0.45) !important;
 }
 
 .rail-btn.active .rail-icon-circle {
   color: #face15 !important;
-  background: transparent !important;
-  border: none !important;
+  background: rgba(250, 206, 21, 0.18) !important;
+  border-color: rgba(250, 206, 21, 0.45) !important;
 }
 
 .rail-spinning-disc {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: radial-gradient(circle, #2a2a2a 0%, #111 65%, #050505 100%);
-  padding: 7px;
+  padding: 8px;
   border: 2px solid rgba(255, 255, 255, 0.22);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
   cursor: pointer;
@@ -2964,11 +2973,35 @@ body.queue-overlay-open .tt-overlay-backdrop {
   }
 
   .rail-icon-circle {
-    width: 36px;
-    height: 36px;
+    width: 36px !important;
+    height: 36px !important;
     background: transparent !important;
     border: none !important;
     backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .rail-icon-circle .tt-rail-svg {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .rail-btn.favorited .rail-icon-circle {
+    background: transparent !important;
+    border: none !important;
+    color: #fe2c55 !important;
+  }
+
+  .rail-btn.active .rail-icon-circle {
+    background: transparent !important;
+    border: none !important;
+    color: #face15 !important;
+  }
+
+  .rail-spinning-disc {
+    width: 44px !important;
+    height: 44px !important;
+    padding: 7px !important;
   }
 
   .tt-bottom-overlay {
