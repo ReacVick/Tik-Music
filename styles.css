@@ -3520,6 +3520,13 @@ body.queue-overlay-open .tt-overlay-backdrop {
   cursor: pointer;
 }
 
+/* Chế độ xoay ngang 16:9: Ẩn nút [Tiếp theo] trên thanh điều khiển */
+body.is-landscape-video #btnToggleQueueDrawer,
+body:has(.is-landscape-16-9) #btnToggleQueueDrawer,
+.is-landscape-stage #btnToggleQueueDrawer {
+  display: none !important;
+}
+
 /* Chế độ xoay ngang toàn màn hình cho video 16:9: Bật HUD chuẩn TikTok + Quầng sáng Ambient FULL MÀN HÌNH 2 bên (Trái & Phải) */
 body.landscape-fullscreen-active .tt-floating-Controls,
 body.landscape-fullscreen-active .tt-mobile-menu-btn,
