@@ -851,12 +851,17 @@ function checkDurationFilter(durationSec, rule, rawItem = null) {
   }
   if (!rule || rule === '0' || rule === 'all') return { passed: true };
 
+  // Bắt buộc phải có thời lượng thực tế > 0
+  if (d <= 0) {
+    return { passed: false, reason: 'invalidDuration', detail: 'Không xác định được thời lượng' };
+  }
+
   const str = String(rule).trim().toLowerCase();
   // Điều kiện nhỏ hơn hoặc bằng (<= X)
   if (str.startsWith('lte_')) {
     const max = Number(str.replace('lte_', ''));
-    if (d > max) {
-      return { passed: false, reason: 'durationMismatch', detail: `Dài hơn mức yêu cầu (${d}s > ${max}s)` };
+    if (d < 4 || d > max) {
+      return { passed: false, reason: 'durationMismatch', detail: `Thời lượng không thỏa mãn (${d}s không thuộc [4s - ${max}s])` };
     }
     return { passed: true };
   }
@@ -2320,7 +2325,7 @@ function shuffleList(list) {
 async function getFreshBatch(minDuration, excludeIds, count = 30) {
   const exclude = new Set((excludeIds || []).map(String));
   const pick = () =>
-    freshPool.items.filter(v => !exclude.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, minDuration).passed);
+    freshPool.items.filter(v => !exclude.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, minDuration, v).passed);
 
   let fresh = pick();
   // Chỉ chờ mạng khi kho RAM thực sự dưới 6 bài; nếu đã có >= 6 bài thì trả về tức thì (< 5ms) và cào bù ở nền
@@ -2342,7 +2347,7 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
       if (fs.existsSync(p)) seed = JSON.parse(fs.readFileSync(p, 'utf8'));
     } catch (_) {}
     seed = shuffleList(
-      seed.filter(v => v && v.id && !exclude.has(String(v.id)) && checkDurationFilter(v.duration || 0, minDuration).passed)
+      seed.filter(v => v && v.id && !exclude.has(String(v.id)) && checkDurationFilter(v.duration || 0, minDuration, v).passed)
     ).slice(0, count - fresh.length);
     seed.forEach(v => {
       if (!mediaRegistry.has(v.id)) {
@@ -2389,7 +2394,7 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
         if (!v || !v.id || excludeSet.has(String(v.id))) return false;
         const captionLower = String(v.desc || '').toLowerCase();
         if (SHOP_SPAM_REGEX.test(captionLower)) return false;
-        if (!checkDurationFilter(v.duration || v.video?.duration || 0, durationRule).passed) return false;
+        if (!checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed) return false;
         excludeSet.add(String(v.id));
         return true;
       });

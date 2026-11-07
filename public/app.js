@@ -102,15 +102,22 @@ function matchesDurationFilter(durationOrItem, rule, extraItem = null) {
     }
   }
 
+  // Bắt buộc phải có thời lượng xác thực (> 0). Video báo 0s hoặc thiếu thông tin bị loại bỏ ngay!
+  if (d <= 0) return false;
+
   const str = String(rule).trim().toLowerCase();
   if (str.startsWith('lte_')) {
     const max = Number(str.replace('lte_', ''));
-    if (d > max) return false;
+    const minFloor = 4; // Video âm nhạc hợp lệ ít nhất phải từ 4s trở lên
+    if (d < minFloor || d > max) return false;
     if (item) {
-      const est = estimateActualDuration(item);
-      if (est > max) return false;
+      const title = String(item.desc || item.title || item.caption || '').toLowerCase();
+      if (/(\b\d+\s*(?:phút|tiếng|ph|h|min|minute|hour)\b|mix\s*set|chillout\s*mix|full\s*mix|nonstop|liên\s*khúc)/i.test(title)) {
+        const est = estimateActualDuration(item);
+        if (est > max) return false;
+      }
     }
-    return d <= max;
+    return true;
   }
   if (str.startsWith('gte_')) {
     const min = Number(str.replace('gte_', ''));
@@ -1265,6 +1272,7 @@ async function initApp() {
   renderCustomTags();
   renderSidebarLibrary();
   updateBadges();
+  startPoolRefillDaemon();
 
   await loadCuratedTags();
 
@@ -1989,7 +1997,11 @@ function showMiniToast(message) {
 }
 
 function getSortedChannelVideos() {
-  const raw = state.activeChannel.videos || [];
+  let raw = state.activeChannel.videos || [];
+  // Lọc theo bộ lọc thời lượng hiện tại nếu có
+  if (state.durationRule && state.durationRule !== 'all' && state.durationRule !== '0') {
+    raw = raw.filter((v) => matchesDurationFilter(v, state.durationRule));
+  }
   const sortBy = state.activeChannel.sortBy || 'latest';
 
   if (sortBy === 'popular') {
@@ -2408,6 +2420,96 @@ async function fetchTikWMClientSearch(keyword, count = 35) {
   return [];
 }
 
+function getDurationKeywordVariations(baseKeyword, durationRule) {
+  const base = String(baseKeyword || 'nhacchill').replace(/^#/, '').trim();
+  const rule = String(durationRule || 'all').toLowerCase();
+
+  if (rule === 'lte_15') {
+    return [
+      `${base} 15s`,
+      `${base} ngắn`,
+      `${base} trend ngắn`,
+      `sound tiktok ngắn 15s`
+    ];
+  }
+  if (rule === 'lte_30') {
+    return [
+      `${base} 30s`,
+      `${base} ngắn hay`,
+      `${base} điệp khúc`,
+      `nhac tiktok 30s`
+    ];
+  }
+  if (rule === 'lte_60') {
+    return [
+      `${base} 1 phút`,
+      `${base} dưới 1 phút`,
+      `${base} ngắn`,
+      `${base} lofi ngắn`
+    ];
+  }
+  if (rule.startsWith('gte_')) {
+    const min = Number(rule.replace('gte_', '')) || 180;
+    if (min >= 120) {
+      return [
+        `${base} full bài`,
+        `${base} bản dài`,
+        `${base} trọn bài`,
+        `${base} acoustic full`
+      ];
+    }
+  }
+
+  return [
+    base,
+    `${base} remix`,
+    `${base} lofi`,
+    `${base} xuhuong`
+  ];
+}
+
+async function fetchTikWMMultiStream(baseKeyword, durationRule, targetCount = 50) {
+  const variations = getDurationKeywordVariations(baseKeyword, durationRule);
+  const seenIds = new Set();
+  const collected = [];
+
+  // BẮN ĐỒNG THỜI 4 LUỒNG CÀO SONG SONG ĐỂ THU THẬP NHIỀU DỮ LIỆU SIÊU TỐC (< 1.5s)
+  const promises = variations.map((kw) => fetchTikWMClientSearch(kw, 35).catch(() => []));
+  const results = await Promise.allSettled(promises);
+
+  for (const res of results) {
+    if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+      for (const v of res.value) {
+        if (!v || !v.id) continue;
+        const idStr = String(v.id);
+        if (seenIds.has(idStr)) continue;
+        seenIds.add(idStr);
+
+        // LỌC NGHIÊM NGẶT 100% THỜI LƯỢNG NGAY TẠI CỔNG CÀO:
+        if (!matchesDurationFilter(v, durationRule)) continue;
+
+        collected.push(v);
+      }
+    }
+  }
+
+  // Nếu số lượng video thỏa mãn vẫn còn ít (< 15 bài), bắn thêm luồng mở rộng
+  if (collected.length < 15) {
+    const extraList = await fetchTikWMClientSearch(`${baseKeyword} sound`, 35).catch(() => []);
+    if (Array.isArray(extraList)) {
+      for (const v of extraList) {
+        if (!v || !v.id || seenIds.has(String(v.id))) continue;
+        seenIds.add(String(v.id));
+        if (matchesDurationFilter(v, durationRule)) {
+          collected.push(v);
+        }
+      }
+    }
+  }
+
+  return sortVideosShortFirst(collected);
+}
+
 async function fetchTikWMClientUser(username, count = 35) {
   const clean = String(username || '').replace(/^@/, '').trim().toLowerCase();
   if (!clean) return null;
@@ -2597,28 +2699,21 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
       console.warn('Backend chậm hoặc đang ngủ, chuyển sang cào trực tiếp qua Client TikWM:', apiErr.message);
     }
 
-    // 2. NẾU BACKEND ĐANG KHỞI ĐỘNG HOẶC CHẬM -> CÀO MỚI TRỰC TIẾP TỪ CLIENT ĐỂ 100% LÀ BÀI MỚI!
+    // 2. NẾU BACKEND ĐANG KHỞI ĐỘNG HOẶC CHẬM -> CÀO ĐA LUỒNG SONG SONG TRỰC TIẾP TỪ CLIENT!
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const clientVideos = await fetchTikWMClientSearch(cleanTag, 35);
+      const clientVideos = await fetchTikWMMultiStream(cleanTag, state.durationRule, 50);
       if (clientVideos.length > 0) {
-        // Lọc bỏ 100% video đã xem trong phiên trước & đối soát thời lượng thực
-        const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
-        const finalPool = (unseen.length >= 6 ? unseen : clientVideos).filter(v =>
-          matchesDurationFilter(v, state.durationRule)
-        );
-        if (finalPool.length > 0) {
-          data = {
-            tag: cleanTag,
-            mode: 'fresh',
-            freshCount: finalPool.length,
-            videos: finalPool,
-            stats: {
-              totalScanned: clientVideos.length,
-              passed: finalPool.length,
-              blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-            }
-          };
-        }
+        data = {
+          tag: cleanTag,
+          mode: 'fresh',
+          freshCount: clientVideos.length,
+          videos: clientVideos,
+          stats: {
+            totalScanned: clientVideos.length,
+            passed: clientVideos.length,
+            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
+          }
+        };
       }
     }
 
@@ -2699,29 +2794,19 @@ async function performSearch(query, forceRefresh = false) {
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const clientVideos = await fetchTikWMClientSearch(cleanQuery, 35);
+      const clientVideos = await fetchTikWMMultiStream(cleanQuery, state.durationRule, 50);
       if (clientVideos.length > 0) {
-        const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
-        const candidatePool = (unseen.length >= 6 ? unseen : clientVideos);
-
-        // Lọc nghiêm ngặt 100% khớp độ dài thực
-        const finalPool = candidatePool.filter(v =>
-          matchesDurationFilter(v, state.durationRule)
-        );
-
-        if (finalPool.length > 0) {
-          data = {
-            query: cleanQuery,
-            mode: 'fresh',
-            freshCount: finalPool.length,
-            videos: finalPool,
-            stats: {
-              totalScanned: clientVideos.length,
-              passed: finalPool.length,
-              blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-            }
-          };
-        }
+        data = {
+          query: cleanQuery,
+          mode: 'fresh',
+          freshCount: clientVideos.length,
+          videos: clientVideos,
+          stats: {
+            totalScanned: clientVideos.length,
+            passed: clientVideos.length,
+            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
+          }
+        };
       }
     }
 
@@ -3027,7 +3112,6 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
         const vh = dom.videoPlayer.videoHeight || 0;
         if (vw <= 0 || vh <= 0) {
           console.warn(`[VideoHealth] Video màn hình đen/không có hình (${track.id}), tự động chuyển sang video có hình!`);
-          showMiniToast('⏭️ Đang tự động đổi sang video có hình ảnh...');
           playNextTrack(false);
         }
       }, 2200);
@@ -3113,48 +3197,76 @@ function resolveFastStreamUrl(track, modeType = 'video') {
   return streamUrl;
 }
 
-// Bộ nạp trước thông minh (Preloader) cho 2 bài tiếp theo giúp vuốt chuyển bài trên điện thoại mượt 0ms
-let _preloadVideoEl = null;
+// Bộ nạp trước đa khe (Multi-Slot RAM Media Preloader) cho 3 bài tiếp theo giúp vuốt chuyển bài mượt 0ms
+const _preloadSlots = [];
 const _prewarmedTrackIds = new Set();
 
 function preloadNextTracksInQueue(currentIndex) {
   const activeList = getActiveListForCurrentView();
   if (!activeList || !activeList.length) return;
 
-  const nextTrack1 = activeList[currentIndex + 1];
-  const nextTrack2 = activeList[currentIndex + 2];
+  const nextTracks = [
+    activeList[currentIndex + 1],
+    activeList[currentIndex + 2],
+    activeList[currentIndex + 3],
+  ].filter(Boolean);
 
-  if (nextTrack1) {
-    const url1 = resolveFastStreamUrl(nextTrack1, state.playMode === 'audio' ? 'audio' : 'video');
-    if (url1) {
-      if (!_preloadVideoEl) {
-        _preloadVideoEl = document.createElement('video');
-        _preloadVideoEl.preload = 'auto';
-        _preloadVideoEl.muted = true;
-        _preloadVideoEl.playsInline = true;
-        _preloadVideoEl.crossOrigin = 'anonymous';
-        _preloadVideoEl.style.display = 'none';
-        document.body.appendChild(_preloadVideoEl);
+  nextTracks.forEach((track, i) => {
+    if (!track || !track.id) return;
+    const trackIdStr = String(track.id);
+
+    // 1. Nạp trước ảnh bìa vào RAM
+    const coverUrl = track.cover || track.video?.cover || track.music?.cover;
+    if (coverUrl && !_prewarmedTrackIds.has('img_' + trackIdStr)) {
+      _prewarmedTrackIds.add('img_' + trackIdStr);
+      const img = new Image();
+      img.src = coverUrl;
+    }
+
+    // 2. Nạp trước luồng video vào khe RAM ẩn để bấm/vuốt là phát tức thì 0ms
+    const streamUrl = resolveFastStreamUrl(track, state.playMode === 'audio' ? 'audio' : 'video');
+    if (streamUrl && i < 2) {
+      if (!_preloadSlots[i]) {
+        const vEl = document.createElement('video');
+        vEl.preload = 'auto';
+        vEl.muted = true;
+        vEl.playsInline = true;
+        vEl.crossOrigin = 'anonymous';
+        vEl.style.display = 'none';
+        document.body.appendChild(vEl);
+        _preloadSlots[i] = vEl;
       }
-      if (_preloadVideoEl.src !== url1) {
-        _preloadVideoEl.src = url1;
-        _preloadVideoEl.load();
+      if (_preloadSlots[i].src !== streamUrl) {
+        _preloadSlots[i].src = streamUrl;
+        _preloadSlots[i].load();
       }
     }
-  }
 
-  [nextTrack1, nextTrack2].forEach((t) => {
-    if (!t || !t.id || _prewarmedTrackIds.has(String(t.id))) return;
-    _prewarmedTrackIds.add(String(t.id));
-    const u = resolveFastStreamUrl(t, 'video');
-    if (u) {
-      fetch(u, {
+    // 3. Tận dụng HTTP Memory Cache của trình duyệt qua Range request (512KB ban đầu)
+    if (streamUrl && !_prewarmedTrackIds.has('stream_' + trackIdStr)) {
+      _prewarmedTrackIds.add('stream_' + trackIdStr);
+      fetch(streamUrl, {
         method: 'GET',
-        headers: { Range: 'bytes=0-393215' },
-        mode: 'cors',
+        headers: { Range: 'bytes=0-524287' },
+        mode: 'no-cors',
       }).catch(() => {});
     }
   });
+}
+
+// Tiến trình ngầm tự động cào nạp thêm video vào RAM mỗi 3.5s (Background Auto-Refill Daemon)
+let poolDaemonTimer = null;
+function startPoolRefillDaemon() {
+  if (poolDaemonTimer) clearInterval(poolDaemonTimer);
+  poolDaemonTimer = setInterval(() => {
+    if (state.currentView !== 'discover') return;
+    if (state.lastQueryType === 'account' || state.lastQueryType === 'library') return;
+    const remaining = state.queue.length - (state.currentIndex + 1);
+    // Nếu người dùng vuốt nhanh làm số video còn lại dưới 25 bài -> tự động cào bổ sung ngay ở nền
+    if (remaining < 25 && !state.isFetchingMore) {
+      autoFetchMoreTracksInBackground();
+    }
+  }, 3500);
 }
 
 async function autoFetchMoreTracksInBackground() {
@@ -3165,38 +3277,41 @@ async function autoFetchMoreTracksInBackground() {
       await openChannelProfile(state.lastQueryValue, true, false);
       return;
     }
+
+    const keyword = state.lastQueryValue || 'nhacchill';
+    // Cào đa luồng song song để lấy ngay 40-50 video sạch chuẩn thời lượng
+    const multiFresh = await fetchTikWMMultiStream(keyword, state.durationRule, 40);
+    if (Array.isArray(multiFresh) && multiFresh.length > 0) {
+      appendVideosToQueue({ videos: multiFresh });
+      return;
+    }
+
+    // Fallback thử qua backend nếu có
     if (state.lastQueryType === 'search') {
       const params = new URLSearchParams({
-        q: state.lastQueryValue,
-        minDuration: String(state.durationRule || state.minDuration),
+        q: keyword,
         durationRule: String(state.durationRule || state.minDuration),
-        strictAnchors: String(state.strictAnchors),
         refresh: 'true',
         exclude: getSeenIdsParam(120),
       });
       const res = await fetch(apiUrl(`/api/search?${params}`));
-      const data = await res.json();
-      if (res.ok && data.videos?.length) {
-        appendVideosToQueue(data);
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.videos?.length) appendVideosToQueue(data);
       }
     } else if (state.lastQueryType === 'tag') {
       const params = new URLSearchParams({
-        tag: state.lastQueryValue,
-        minDuration: String(state.durationRule || state.minDuration),
+        tag: keyword,
         durationRule: String(state.durationRule || state.minDuration),
-        strictAnchors: String(state.strictAnchors),
         refresh: 'true',
         exclude: getSeenIdsParam(120),
       });
       const res = await fetch(apiUrl(`/api/feed/tag?${params}`));
-      const data = await res.json();
-      if (res.ok && data.videos?.length) {
-        appendVideosToQueue(data);
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.videos?.length) appendVideosToQueue(data);
       }
     }
-    await loadSmartMixFeed(true);
   } catch (e) {
   } finally {
     state.isFetchingMore = false;
@@ -4190,7 +4305,29 @@ function bindEvents() {
     state.durationRule = dom.minDurationSelect.value;
     updateDurationPillLabel();
     saveLocalState();
-    reloadCurrentFeed(false);
+
+    // 1. Xóa sạch bộ đệm nạp trước cũ
+    prefetchedFreshData = null;
+
+    // 2. Lọc ngay tại chỗ hàng đợi hiện tại: loại bỏ tất cả các bài không khớp thời lượng mới
+    if (Array.isArray(state.queue)) {
+      state.queue = state.queue.filter((v) => matchesDurationFilter(v, state.durationRule));
+      renderQueueList();
+    }
+
+    // 3. Nếu video đang phát không khớp thời lượng mới: dừng phát ngay lập tức và nạp bài mới
+    if (state.currentTrack && !matchesDurationFilter(state.currentTrack, state.durationRule)) {
+      try {
+        dom.videoPlayer.pause();
+        dom.videoPlayer.removeAttribute('src');
+        dom.videoPlayer.load();
+      } catch (_) {}
+      setLoadingState(true);
+      state.currentTrack = null;
+    }
+
+    // 4. Kích hoạt cào mới đa luồng ép buộc 100% (forceRefresh = true)
+    reloadCurrentFeed(true);
   });
 
   dom.strictAnchorsToggle?.addEventListener('change', () => {
@@ -4238,9 +4375,8 @@ function bindEvents() {
     const curDur = dom.videoPlayer.duration;
     if (state.durationRule && state.durationRule.startsWith('lte_') && !isNaN(curDur) && curDur > 0) {
       const maxAllowed = Number(state.durationRule.replace('lte_', '')) || 60;
-      if (curDur > maxAllowed + 5) {
-        console.warn(`[DurationCheck] Video thực tế dài ${Math.round(curDur)}s vượt mức lọc ${state.durationRule}, tự động chuyển bài!`);
-        showMiniToast(`⏭️ Bỏ qua video dài (${Math.round(curDur / 60)} phút) để đảm bảo bộ lọc ${state.durationRule}...`);
+      if (curDur > maxAllowed + 2) {
+        console.warn(`[DurationCheck] Video thực tế dài ${Math.round(curDur)}s vượt mức lọc ${state.durationRule}, âm thầm chuyển bài!`);
         playNextTrack(false);
         return;
       }
