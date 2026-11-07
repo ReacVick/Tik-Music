@@ -106,6 +106,32 @@ function applyPerformanceModeUI() {
 }
 
 // ============================================================================
+// MÀN HÌNH MỞ ĐẦU CHUẨN TIKTOK (SPLASH SCREEN CHE GIẤU THỜI GIAN CÀO MỚI)
+// ============================================================================
+let splashDismissed = false;
+const splashStartTime = Date.now();
+const MIN_SPLASH_TIME = 2100; // Hiển thị tối thiểu 2.1s để tạo cảm giác mở app xịn và che giấu thời gian cào video
+
+function hideSplashScreen(statusMsg = '') {
+  if (splashDismissed) return;
+  const statusEl = document.getElementById('splashStatusText');
+  if (statusEl && statusMsg) {
+    statusEl.textContent = statusMsg;
+  }
+  const elapsed = Date.now() - splashStartTime;
+  const delay = Math.max(0, MIN_SPLASH_TIME - elapsed);
+  setTimeout(() => {
+    if (splashDismissed) return;
+    splashDismissed = true;
+    const splash = document.getElementById('ttSplashScreen');
+    if (splash) {
+      splash.classList.add('splash-hidden');
+      setTimeout(() => splash.remove(), 600);
+    }
+  }, delay);
+}
+
+// ============================================================================
 // 6 CẤU HÌNH ACOUSTIC DOLBY ATMOS KHÁC BIỆT RÕ RỆT TRÊN TAI NGHE CÓ DÂY
 // Mỗi chế độ thay đổi cấu trúc tần số (Sub-Bass, Punch, Low-Mid, Vocal, Air/Lowpass),
 // độ mở âm trường đảo pha (M/S Crossfeed) và độ vang phòng 3D (Binaural Convolver)
@@ -1151,8 +1177,9 @@ async function initApp() {
     await loadFeedByTag('nhacchill', false, { history: 'replace' });
     openLibraryPage(initialRoute.tab || 'favorites');
   } else {
-    // Luôn ưu tiên phát danh sách nhạc thịnh hành #nhacchill trước để người dùng nghe được nhạc ngay lập tức
-    await loadFeedByTag('nhacchill', false, { isInitialLoad: true, history: 'replace' });
+    // Mở web hoặc F5: Luôn luôn cào mới 100% từ TikTok (forceRefresh=true) trong lúc màn hình Splash đang che giấu
+    setTimeout(hideSplashScreen, 3200);
+    await loadFeedByTag('nhacchill', true, { isInitialLoad: true, history: 'replace' });
     if (state.account && state.account.username) {
       renderConnectedAccount(state.account);
     }
@@ -2222,25 +2249,61 @@ function normalizeTikWMItemClient(v) {
   };
 }
 
-async function fetchTikWMClientSearch(keyword, count = 30) {
-  const target = `https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(keyword)}&count=${count}`;
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-    `https://corsproxy.io/?url=${encodeURIComponent(target)}`,
-    target
-  ];
+async function fetchTikWMClientSearch(keyword, count = 35) {
+  const clean = String(keyword || 'nhacchill').replace(/^#/, '').trim();
+  const formBody = new URLSearchParams({
+    keywords: clean,
+    count: String(count),
+    HD: '1'
+  }).toString();
 
-  for (const url of proxies) {
-    try {
-      const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(4500) });
-      if (!res.ok) continue;
+  // 1. Thử gọi trực tiếp TikWM (hỗ trợ CORS: * trên toàn cầu)
+  try {
+    const res = await fetch('https://www.tikwm.com/api/feed/search/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Accept': 'application/json'
+      },
+      body: formBody,
+      signal: AbortSignal.timeout(6000)
+    });
+    if (res.ok) {
       const json = await res.json();
       const list = json?.data?.videos;
       if (Array.isArray(list) && list.length > 0) {
         return list.map(normalizeTikWMItemClient);
       }
-    } catch (e) {}
+    }
+  } catch (e) {
+    console.warn('[DirectTikWMClient] Thử qua proxy:', e.message);
   }
+
+  // 2. Fallback qua proxy CORS nếu mạng bị tường lửa
+  const proxies = [
+    `https://corsproxy.io/?url=${encodeURIComponent('https://www.tikwm.com/api/feed/search/')}`,
+  ];
+  for (const pUrl of proxies) {
+    try {
+      const res = await fetch(pUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: formBody,
+        signal: AbortSignal.timeout(6000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const list = json?.data?.videos;
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map(normalizeTikWMItemClient);
+        }
+      }
+    } catch (_) {}
+  }
+
   return [];
 }
 
@@ -2438,36 +2501,65 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
 
   try {
     let data = null;
+    const isInitial = Boolean(opts.isInitialLoad);
+    const shouldRefresh = forceRefresh || isInitial;
+
+    // 1. Thử gọi qua Backend API (gói excludeIds để loại bỏ toàn bộ bài đã xem)
     try {
       const params = new URLSearchParams({
         tag: cleanTag,
         minDuration: String(state.durationRule || state.minDuration),
         durationRule: String(state.durationRule || state.minDuration),
         strictAnchors: String(state.strictAnchors),
-        refresh: String(forceRefresh),
-        exclude: forceRefresh ? getSeenIdsParam(120) : '',
+        refresh: String(shouldRefresh),
+        exclude: shouldRefresh ? getSeenIdsParam(150) : '',
       });
 
-      if (forceRefresh) showMiniToast('🎲 Đang cào loạt video mới từ TikTok...');
-      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), { signal: AbortSignal.timeout(forceRefresh ? 25000 : 9000) });
+      if (shouldRefresh && !isInitial) showMiniToast('🎲 Đang cào loạt video mới từ TikTok...');
+      const res = await fetch(apiUrl(`/api/feed/tag?${params}`), {
+        signal: AbortSignal.timeout(isInitial ? 4200 : (forceRefresh ? 25000 : 9000))
+      });
       if (res.ok) {
         data = await res.json();
-        if (forceRefresh && data.mode === 'fresh') {
+        if (shouldRefresh && data.mode === 'fresh' && !isInitial) {
           showMiniToast(`✅ ${data.freshCount || 0} video mới vừa cào từ TikTok`);
         }
       }
     } catch (apiErr) {
-      console.warn('Backend chậm hoặc không phản hồi, dùng kho dự phòng:', apiErr.message);
+      console.warn('Backend chậm hoặc đang ngủ, chuyển sang cào trực tiếp qua Client TikWM:', apiErr.message);
     }
 
+    // 2. NẾU BACKEND ĐANG KHỞI ĐỘNG HOẶC CHẬM -> CÀO MỚI TRỰC TIẾP TỪ CLIENT ĐỂ 100% LÀ BÀI MỚI!
+    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
+      const clientVideos = await fetchTikWMClientSearch(cleanTag, 35);
+      if (clientVideos.length > 0) {
+        // Lọc bỏ 100% video đã xem trong phiên trước
+        const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
+        const finalPool = (unseen.length >= 6 ? unseen : clientVideos).filter(v =>
+          matchesDurationFilter(v.duration, state.durationRule)
+        );
+        if (finalPool.length > 0) {
+          data = {
+            tag: cleanTag,
+            mode: 'fresh',
+            freshCount: finalPool.length,
+            videos: finalPool,
+            stats: {
+              totalScanned: clientVideos.length,
+              passed: finalPool.length,
+              blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
+            }
+          };
+        }
+      }
+    }
+
+    // 3. Fallback cuối cùng nếu mất mạng hoàn toàn
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
       let matched = filterCatalog(catalog, cleanTag);
-      if (forceRefresh) {
-        const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
-        matched = (unseen.length >= 8 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
-        showMiniToast('⚠️ Server đang bận, tạm dùng kho dự phòng');
-      }
+      const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
+      matched = (unseen.length >= 6 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
       if (matched.length > 0) {
         data = {
           tag: cleanTag,
@@ -2475,21 +2567,6 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
           stats: {
             totalScanned: matched.length,
             passed: matched.length,
-            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-          }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const fallbackVideos = await fetchTikWMClientSearch(cleanTag, 30);
-      if (fallbackVideos.length > 0) {
-        data = {
-          tag: cleanTag,
-          videos: fallbackVideos,
-          stats: {
-            totalScanned: fallbackVideos.length,
-            passed: fallbackVideos.length,
             blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
           }
         };
@@ -2505,6 +2582,7 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
     showErrorInQueue(err.message);
   } finally {
     setLoadingState(false);
+    hideSplashScreen();
   }
 }
 
@@ -2572,12 +2650,34 @@ async function performSearch(query, forceRefresh = false) {
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
+      const clientVideos = await fetchTikWMClientSearch(cleanQuery, 35);
+      if (clientVideos.length > 0) {
+        const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
+        const finalPool = (unseen.length >= 6 ? unseen : clientVideos).filter(v =>
+          matchesDurationFilter(v.duration, state.durationRule)
+        );
+        if (finalPool.length > 0) {
+          data = {
+            query: cleanQuery,
+            mode: 'fresh',
+            freshCount: finalPool.length,
+            videos: finalPool,
+            stats: {
+              totalScanned: clientVideos.length,
+              passed: finalPool.length,
+              blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
+            }
+          };
+        }
+      }
+    }
+
+    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const catalog = await getStaticCatalog();
       let matched = filterCatalog(catalog, cleanQuery);
       if (forceRefresh) {
         const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
         matched = (unseen.length >= 8 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
-        showMiniToast('⚠️ Server đang bận, tạm dùng kho dự phòng');
       }
       if (matched.length > 0) {
         data = {
@@ -2586,21 +2686,6 @@ async function performSearch(query, forceRefresh = false) {
           stats: {
             totalScanned: matched.length,
             passed: matched.length,
-            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-          }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const fallbackVideos = await fetchTikWMClientSearch(cleanQuery, 30);
-      if (fallbackVideos.length > 0) {
-        data = {
-          query: cleanQuery,
-          videos: fallbackVideos,
-          stats: {
-            totalScanned: fallbackVideos.length,
-            passed: fallbackVideos.length,
             blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
           }
         };
@@ -2910,16 +2995,19 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
             dolbyEngine.init();
             dolbyEngine.applyCurrentSettings();
             preloadNextTracksInQueue(index);
+            hideSplashScreen('Đang phát!');
           })
           .catch(() => {
             setLoadingState(false);
             updatePlayingUI(false);
+            hideSplashScreen();
           });
       }
     } else {
       setLoadingState(false);
       updatePlayingUI(false);
       preloadNextTracksInQueue(index);
+      hideSplashScreen();
     }
   }
 

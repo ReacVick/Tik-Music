@@ -14,6 +14,29 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 <body class="ambient-vivid frame-blend-on">
+  <!-- ========================================================================= -->
+  <!-- MÀN HÌNH MỞ ĐẦU CHUẨN TIKTOK (SPLASH SCREEN CHE GIẤU HOÀN TOÀN THỜI GIAN CÀO) -->
+  <!-- ========================================================================= -->
+  <div id="ttSplashScreen" class="tt-splash-screen" aria-hidden="false">
+    <div class="tt-splash-content">
+      <div class="tt-splash-logo-wrap">
+        <svg class="tt-splash-logo" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path class="tt-layer-cyan" d="M38.4 17.6c-3.1 0-5.8-1.5-7.5-3.8v16.7c0 6.3-5.1 11.5-11.5 11.5S7.9 36.8 7.9 30.5 13.1 19 19.4 19c.7 0 1.4.1 2.1.2v6.4c-.7-.3-1.4-.4-2.1-.4-2.8 0-5.1 2.3-5.1 5.1s2.3 5.1 5.1 5.1 5.1-2.3 5.1-5.1V6h6.4c.5 4.3 3.9 7.7 8.2 8.2v3.4z" fill="#00f2fe"/>
+          <path class="tt-layer-pink" d="M39.6 18.8c-3.1 0-5.8-1.5-7.5-3.8v16.7c0 6.3-5.1 11.5-11.5 11.5S9.1 38 9.1 31.7 14.3 20.2 20.6 20.2c.7 0 1.4.1 2.1.2v6.4c-.7-.3-1.4-.4-2.1-.4-2.8 0-5.1 2.3-5.1 5.1s2.3 5.1 5.1 5.1 5.1-2.3 5.1-5.1V7.2h6.4c.5 4.3 3.9 7.7 8.2 8.2v3.4z" fill="#fe2c55"/>
+          <path class="tt-layer-white" d="M39 18.2c-3.1 0-5.8-1.5-7.5-3.8v16.7c0 6.3-5.1 11.5-11.5 11.5S8.5 37.4 8.5 31.1 13.7 19.6 20 19.6c.7 0 1.4.1 2.1.2v6.4c-.7-.3-1.4-.4-2.1-.4-2.8 0-5.1 2.3-5.1 5.1s2.3 5.1 5.1 5.1 5.1-2.3 5.1-5.1V6.6h6.4c.5 4.3 3.9 7.7 8.2 8.2v3.4z" fill="#ffffff"/>
+        </svg>
+      </div>
+      <div class="tt-splash-title">TikTok<span>Music</span></div>
+      <div class="tt-splash-soundwave">
+        <span class="bar bar-1"></span>
+        <span class="bar bar-2"></span>
+        <span class="bar bar-3"></span>
+        <span class="bar bar-4"></span>
+      </div>
+      <div class="tt-splash-status" id="splashStatusText">Đang khám phá giai điệu mới...</div>
+    </div>
+  </div>
+
   <!-- LỚP ÁNH SÁNG AMBIENT TOÀN TRANG (LAN TỎA KHẮP MỤC BÊN TRÁI & TOÀN BỘ GIAO DIỆN) -->
   <canvas id="ambientBackdropCanvas" class="ambient-backdrop-canvas" width="64" height="36"></canvas>
 
@@ -733,7 +756,7 @@
     </div>
   </div>
 
-  <script src="catalog_bundle.js?v=20261107v9"></script>
-  <script src="app.js?v=20261107v9"></script>
+  <script src="catalog_bundle.js?v=20261107v10"></script>
+  <script src="app.js?v=20261107v10"></script>
 </body>
 </html>
