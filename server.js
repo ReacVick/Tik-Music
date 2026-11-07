@@ -1940,8 +1940,14 @@ app.get('/api/trending-sounds', async (req, res) => {
 const freshPool = { items: [], updatedAt: 0, filling: false };
 
 async function refillFreshPool(rounds = 6) {
-  if (freshPool.filling) return;
-  freshPool.filling = true;
+  if (freshPool.filling) return freshPool.filling;
+  freshPool.filling = doRefillFreshPool(rounds).finally(() => {
+    freshPool.filling = null;
+  });
+  return freshPool.filling;
+}
+
+async function doRefillFreshPool(rounds) {
   try {
     const batches = await Promise.all(Array.from({ length: rounds }, () => fetchMobileFeedItems(1)));
     const raw = batches.flat();
@@ -1960,8 +1966,6 @@ async function refillFreshPool(rounds = 6) {
     console.log(`[FreshPool] +${added} video mới (tổng ${freshPool.items.length})`);
   } catch (e) {
     console.warn('[FreshPool] Lỗi nạp:', e.message);
-  } finally {
-    freshPool.filling = false;
   }
 }
 
@@ -1980,6 +1984,10 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
     freshPool.items.filter(v => !exclude.has(String(v.id)) && Number(v.duration || v.video?.duration || 0) >= minDuration);
 
   let fresh = pick();
+  if (fresh.length < 12) {
+    await refillFreshPool(8);
+    fresh = pick();
+  }
   if (fresh.length < 12) {
     await refillFreshPool(8);
     fresh = pick();
