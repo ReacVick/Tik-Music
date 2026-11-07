@@ -3837,11 +3837,11 @@ body.landscape-fullscreen-active .tt-more-menu {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: flex-end;
   cursor: pointer;
-  z-index: 45;
+  z-index: 55;
   touch-action: none;
   padding: 0;
   background: transparent;
@@ -3849,7 +3849,7 @@ body.landscape-fullscreen-active .tt-more-menu {
 
 .tt-edge-track {
   width: 100%;
-  height: 2.5px;
+  height: 3.5px;
   background: rgba(255, 255, 255, 0.28);
   position: relative;
   transition: height 0.15s ease;
@@ -3858,15 +3858,16 @@ body.landscape-fullscreen-active .tt-more-menu {
 
 .tt-edge-progress-bar:hover .tt-edge-track,
 .tt-edge-progress-bar.is-dragging .tt-edge-track {
-  height: 5px;
+  height: 6px;
 }
 
 .tt-edge-fill {
   height: 100%;
   width: 0%;
-  background: #ffffff;
+  background: #fe2c55; /* Chuẩn đỏ hồng TikTok */
   position: relative;
   border-radius: 0 999px 999px 0;
+  box-shadow: 0 0 10px rgba(254, 44, 85, 0.7);
 }
 
 .tt-edge-thumb {
@@ -3877,14 +3878,15 @@ body.landscape-fullscreen-active .tt-more-menu {
   height: 10px;
   border-radius: 50%;
   background: #ffffff;
-  transform: translateY(-50%) scale(0);
-  transition: transform 0.15s ease;
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.7);
+  transform: translateY(-50%) scale(0.9);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.8), 0 0 6px rgba(254, 44, 85, 0.8);
 }
 
 .tt-edge-progress-bar:hover .tt-edge-thumb,
 .tt-edge-progress-bar.is-dragging .tt-edge-thumb {
-  transform: translateY(-50%) scale(1);
+  transform: translateY(-50%) scale(1.4);
+  box-shadow: 0 0 12px rgba(254, 44, 85, 1), 0 0 4px #ffffff;
 }
 
 .tt-player-bar {

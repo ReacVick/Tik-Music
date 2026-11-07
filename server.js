@@ -844,6 +844,18 @@ function estimateActualDurationServer(rawItem, durationSec) {
   return d;
 }
 
+function getDurationTargetedKeyword(rawKeyword, durationRule) {
+  const base = String(rawKeyword || 'nhacchill').replace(/^#/, '').trim();
+  const rule = String(durationRule || '').trim().toLowerCase();
+  if (rule === 'lte_30') return `${base} 30s`;
+  if (rule === 'lte_60') return `${base} ngắn`;
+  if (rule.startsWith('gte_')) {
+    const min = Number(rule.replace('gte_', '')) || 0;
+    if (min >= 120) return `${base} full`;
+  }
+  return base;
+}
+
 function checkDurationFilter(durationSec, rule, rawItem = null) {
   let d = Number(durationSec) || 0;
   if (rawItem) {
@@ -1405,16 +1417,37 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const tagCandidates = expandQueryToTagPool(rawQuery);
   const primarySlug = tagCandidates[0] || 'nhacchill';
+  const durationRule = options.durationRule || options.minDuration || 'gte_12';
 
   // 1. TIA CHỚP (FAST-PATH TIKWM + FAKE IP ROTATION): Cào trực tiếp video mới theo từ khóa/tag với phân trang cursor
   try {
-    const tikwmRaw = await fetchTikWMSearch(rawQuery || primarySlug, 30, forceRefresh);
+    const searchKw = getDurationTargetedKeyword(rawQuery || primarySlug, durationRule);
+    const tikwmRaw = await fetchTikWMSearch(searchKw, 35, forceRefresh);
     const tikwmVideos = (tikwmRaw || []).filter(v => {
       if (!v || !v.id || excludeIds.has(String(v.id))) return false;
       const captionLower = String(v.desc || '').toLowerCase();
       if (SHOP_SPAM_REGEX.test(captionLower)) return false;
+      const dur = v.duration || v.video?.duration || 0;
+      if (!checkDurationFilter(dur, durationRule, v).passed) return false;
       return true;
     });
+
+    // Nếu số lượng video ngắn còn ít (< 10), cào thêm 1 luồng phụ để đảm bảo đủ video
+    if (tikwmVideos.length < 10 && String(durationRule).startsWith('lte_')) {
+      const altKw = durationRule === 'lte_30' ? `${primarySlug} short` : `${primarySlug} remix`;
+      const altRaw = await fetchTikWMSearch(altKw, 30, forceRefresh).catch(() => []);
+      for (const v of altRaw) {
+        if (!v || !v.id || excludeIds.has(String(v.id))) continue;
+        const captionLower = String(v.desc || '').toLowerCase();
+        if (SHOP_SPAM_REGEX.test(captionLower)) continue;
+        const dur = v.duration || v.video?.duration || 0;
+        if (!checkDurationFilter(dur, durationRule, v).passed) continue;
+        if (!tikwmVideos.some(item => item.id === v.id)) {
+          tikwmVideos.push(v);
+        }
+      }
+    }
+
     if (tikwmVideos.length > 0) {
       const blockedCount = Math.max(0, (tikwmRaw || []).length - tikwmVideos.length);
       const stats = {
@@ -1438,7 +1471,7 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
     console.warn('[FastPath] Thử fallback khác:', e.message);
   }
 
-  const poolKey = `pool:${primarySlug}:${options.minDuration ?? 15}:${options.strictAnchors ?? false}`;
+  const poolKey = `pool:${primarySlug}:${durationRule}:${options.strictAnchors ?? false}`;
 
   let pool = deepVideoPools.get(poolKey);
   if (!pool) {
@@ -1451,12 +1484,14 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
     deepVideoPools.set(poolKey, pool);
   }
 
-  // Lọc ra những video trong Pool mà người dùng chưa xem (không nằm trong excludeIds)
-  const unseenInPool = pool.items.filter(v => !excludeIds.has(v.id));
+  // Lọc ra những video trong Pool mà người dùng chưa xem (không nằm trong excludeIds) và KHỚP THỜI LƯỢNG
+  const unseenInPool = pool.items.filter(v => !excludeIds.has(v.id) && checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
 
   // Nếu trong Pool đã có sẵn >= 18 bài đúng chủ đề chưa xem, trả về NGAY LẬP TỨC (< 15ms!) theo đúng thứ tự điểm khớp cao nhất!
   if (unseenInPool.length >= 18) {
-    const rankedBatch = rankVideosByRelevance(unseenInPool, rawQuery, primarySlug).slice(0, 28);
+    const rankedBatch = rankVideosByRelevance(unseenInPool, rawQuery, primarySlug)
+      .filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed)
+      .slice(0, 28);
     triggerBackgroundPoolExpansion(poolKey, tagCandidates, rawQuery, options);
     const fallbackStats = pool.lastFilterStats || {
       totalScanned: pool.items.length + 12,
@@ -1508,14 +1543,12 @@ async function getDiverseVideosForQuery(rawQuery, options = {}) {
 
   // Đối với chủ đề nhảy/trend (video thường dài 8s-15s), nới nhẹ ngưỡng thời lượng tối thiểu xuống 8s nếu đang để mặc định <= 15s
   const isDanceQuery = /nhay|dance|trend/i.test(primarySlug);
-  const effectiveMinDuration =
-    isDanceQuery && Number(options.minDuration ?? 12) <= 15
-      ? Math.min(Number(options.minDuration ?? 12), 8)
-      : Number(options.minDuration ?? 12);
+  const effectiveDurationRule = durationRule;
 
   let filtered = filterAndNormalizeItems(combinedRaw, cookieHeader, {
     ...options,
-    minDuration: effectiveMinDuration,
+    durationRule: effectiveDurationRule,
+    minDuration: effectiveDurationRule,
     excludeIds: [...excludeIds]
   });
 
@@ -2328,12 +2361,23 @@ async function getFreshBatch(minDuration, excludeIds, count = 30) {
     freshPool.items.filter(v => !exclude.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, minDuration, v).passed);
 
   let fresh = pick();
-  // Chỉ chờ mạng khi kho RAM thực sự dưới 6 bài; nếu đã có >= 6 bài thì trả về tức thì (< 5ms) và cào bù ở nền
-  if (fresh.length < 6) {
-    await refillFreshPool(8);
-    fresh = pick();
-  }
-  if (fresh.length < 6) {
+  // Nếu kho RAM còn ít video đúng thời lượng, lập tức cào bù các luồng trúng đích
+  if (fresh.length < 8) {
+    if (String(minDuration).startsWith('lte_30')) {
+      const shortScraped = await fetchTikWMSearch('nhac 30s', 35, true).catch(() => []);
+      for (const v of shortScraped) {
+        if (v && v.id && !freshPool.items.some(item => item.id === v.id)) {
+          freshPool.items.push(v);
+        }
+      }
+    } else if (String(minDuration).startsWith('lte_60')) {
+      const shortScraped = await fetchTikWMSearch('nhac ngan 1 phut', 35, true).catch(() => []);
+      for (const v of shortScraped) {
+        if (v && v.id && !freshPool.items.some(item => item.id === v.id)) {
+          freshPool.items.push(v);
+        }
+      }
+    }
     await refillFreshPool(8);
     fresh = pick();
   }
@@ -2386,9 +2430,10 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
     // "Đổi loạt mới": kết hợp cào trang mới theo Tag (TikWM + Fake IP) và kho FreshPool để đúng chủ đề & 100% bài mới!
     if (forceRefresh && tag !== 'smartmix') {
       const excludeSet = new Set(excludeIds.map(String));
+      const searchKw = getDurationTargetedKeyword(tag, durationRule);
       const [tagScraped, batchData] = await Promise.all([
-        fetchTikWMSearch(tag, 25, true).catch(() => []),
-        getFreshBatch(durationRule, excludeIds, 20)
+        fetchTikWMSearch(searchKw, 35, true).catch(() => []),
+        getFreshBatch(durationRule, excludeIds, 25)
       ]);
       const cleanTagVideos = (tagScraped || []).filter(v => {
         if (!v || !v.id || excludeSet.has(String(v.id))) return false;
@@ -2398,13 +2443,14 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
         excludeSet.add(String(v.id));
         return true;
       });
-      const extraFresh = cleanTagVideos.length >= 5
+      const extraFresh = cleanTagVideos.length >= 8
         ? []
-        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
-      const seedFallback = (cleanTagVideos.length + extraFresh.length) >= 5
+        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+      const seedFallback = (cleanTagVideos.length + extraFresh.length) >= 8
         ? []
-        : (batchData.seed || []);
-      const videos = [...cleanTagVideos, ...extraFresh, ...seedFallback].slice(0, 30);
+        : (batchData.seed || []).filter(v => v && v.id && !excludeSet.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+      const rawCombined = [...cleanTagVideos, ...extraFresh, ...seedFallback];
+      const videos = rawCombined.filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed).slice(0, 30);
       const freshTotal = cleanTagVideos.length + extraFresh.length;
       const stats = {
         totalScanned: videos.length,
@@ -2421,7 +2467,10 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
 
     if (tag === 'smartmix') {
       const userTags = req.query.tags ? String(req.query.tags).split(',').filter(Boolean) : [];
-      const mixData = await fetchSmartMix(userTags, { minDuration, strictAnchors, forceRefresh, excludeIds });
+      const mixData = await fetchSmartMix(userTags, { minDuration, durationRule, strictAnchors, forceRefresh, excludeIds });
+      if (mixData && Array.isArray(mixData.videos)) {
+        mixData.videos = mixData.videos.filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+      }
       return res.json({
         tag: 'smartmix',
         sourcesUsed: mixData.pickedTags?.map(t => `#${t}`) || ['#smartmix'],
@@ -2432,10 +2481,14 @@ app.get(['/api/feed', '/api/feed/tag'], async (req, res) => {
 
     const data = await getDiverseVideosForQuery(tag, {
       minDuration,
+      durationRule,
       strictAnchors,
       forceRefresh,
       excludeIds
     });
+    if (data && Array.isArray(data.videos)) {
+      data.videos = data.videos.filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+    }
     res.json({
       ...data,
       stats: data.filterStats
@@ -2555,24 +2608,27 @@ app.get('/api/search', async (req, res) => {
 
     if (forceRefresh) {
       const excludeSet = new Set(excludeIds.map(String));
+      const searchKw = getDurationTargetedKeyword(q, durationRule);
       const [queryScraped, batchData] = await Promise.all([
-        fetchTikWMSearch(q, 25, true).catch(() => []),
-        getFreshBatch(minDuration, excludeIds, 20)
+        fetchTikWMSearch(searchKw, 35, true).catch(() => []),
+        getFreshBatch(durationRule, excludeIds, 25)
       ]);
       const cleanQueryVideos = (queryScraped || []).filter(v => {
         if (!v || !v.id || excludeSet.has(String(v.id))) return false;
         const captionLower = String(v.desc || '').toLowerCase();
         if (SHOP_SPAM_REGEX.test(captionLower)) return false;
+        if (!checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed) return false;
         excludeSet.add(String(v.id));
         return true;
       });
-      const extraFresh = cleanQueryVideos.length >= 5
+      const extraFresh = cleanQueryVideos.length >= 8
         ? []
-        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)));
-      const seedFallback = (cleanQueryVideos.length + extraFresh.length) >= 5
+        : (batchData.fresh || []).filter(v => v && v.id && !excludeSet.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+      const seedFallback = (cleanQueryVideos.length + extraFresh.length) >= 8
         ? []
-        : (batchData.seed || []);
-      const videos = [...cleanQueryVideos, ...extraFresh, ...seedFallback].slice(0, 30);
+        : (batchData.seed || []).filter(v => v && v.id && !excludeSet.has(String(v.id)) && checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+      const rawCombined = [...cleanQueryVideos, ...extraFresh, ...seedFallback];
+      const videos = rawCombined.filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed).slice(0, 30);
       const freshTotal = cleanQueryVideos.length + extraFresh.length;
       const stats = {
         totalScanned: videos.length,
@@ -2598,10 +2654,14 @@ app.get('/api/search', async (req, res) => {
 
     const data = await getDiverseVideosForQuery(q, {
       minDuration,
+      durationRule,
       strictAnchors,
       forceRefresh,
       excludeIds
     });
+    if (data && Array.isArray(data.videos)) {
+      data.videos = data.videos.filter(v => checkDurationFilter(v.duration || v.video?.duration || 0, durationRule, v).passed);
+    }
 
     res.json({
       query: q,
