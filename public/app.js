@@ -52,12 +52,64 @@ const AMBIENT_LABELS = {
 
 const ASPECT_MODES = ['auto', '16:9', '9:16'];
 
-function matchesDurationFilter(duration, rule) {
-  const d = Number(duration) || 0;
+function estimateActualDuration(videoItem) {
+  if (!videoItem) return 0;
+  const reportedDuration = Number(videoItem.video?.duration || videoItem.duration || 0);
+  const title = String(videoItem.desc || videoItem.title || videoItem.caption || '').toLowerCase();
+
+  // 1. Phân tích ngữ nghĩa từ khóa thời lượng tiếng/giờ/hour
+  const hourMatch = title.match(/(\d+(?:[.,]\d+)?)\s*(?:tiếng|gi?ờ|h|hour|hours)\b/i);
+  if (hourMatch) {
+    const hours = parseFloat(hourMatch[1].replace(',', '.'));
+    if (!isNaN(hours) && hours > 0) return Math.max(reportedDuration, Math.round(hours * 3600));
+  }
+
+  // 2. Phân tích từ khóa phút/min/minute
+  const minMatch = title.match(/(\d+(?:[.,]\d+)?)\s*(?:phút|ph|min|mins|minute|minutes)\b/i);
+  if (minMatch) {
+    const mins = parseFloat(minMatch[1].replace(',', '.'));
+    if (!isNaN(mins) && mins >= 2) {
+      return Math.max(reportedDuration, Math.round(mins * 60));
+    }
+  }
+
+  // 3. Từ khóa ngầm định video dài (Mixset, Chillout Mix, Nonstop, Tuyển tập...)
+  if (/mix\s*set|chillout\s*mix|full\s*mix|nonstop|liên\s*khúc|tuyển\s*tập|nhạc\s*dài/i.test(title)) {
+    if (reportedDuration <= 60) return 1800; // Ít nhất 30 phút
+  }
+
+  // 4. Ước lượng qua dung lượng file (Content-Length / size) nếu có
+  const fileSize = Number(videoItem.size || videoItem.video?.size || videoItem.contentLength || 0);
+  if (fileSize > 25 * 1024 * 1024 && reportedDuration <= 60) {
+    return Math.max(reportedDuration, Math.round(fileSize / (150 * 1024)));
+  }
+
+  return reportedDuration;
+}
+
+function matchesDurationFilter(durationOrItem, rule, extraItem = null) {
   if (!rule || rule === '0' || rule === 'all') return true;
+  let d = 0;
+  let item = null;
+  if (typeof durationOrItem === 'object' && durationOrItem !== null) {
+    item = durationOrItem;
+    d = estimateActualDuration(item);
+  } else {
+    d = Number(durationOrItem) || 0;
+    item = extraItem;
+    if (item) {
+      d = estimateActualDuration(item);
+    }
+  }
+
   const str = String(rule).trim().toLowerCase();
   if (str.startsWith('lte_')) {
     const max = Number(str.replace('lte_', ''));
+    if (d > max) return false;
+    if (item) {
+      const est = estimateActualDuration(item);
+      if (est > max) return false;
+    }
     return d <= max;
   }
   if (str.startsWith('gte_')) {
@@ -73,6 +125,56 @@ function matchesDurationFilter(duration, rule) {
   const num = Number(str);
   if (!isNaN(num) && num > 0) return d >= num;
   return true;
+}
+
+function isTrackLandscape(track) {
+  if (!track) return false;
+  if (track.isLandscape || track.video?.isLandscape) return true;
+  const w = Number(track.video?.width || track.width || 0);
+  const h = Number(track.video?.height || track.height || 0);
+  if (w > 0 && h > 0 && w > h * 1.05) return true;
+  const ratio = Number(track.video?.aspectRatio || track.aspectRatio || 0);
+  if (ratio > 1.05) return true;
+  return false;
+}
+
+function sortVideosShortFirst(videoList) {
+  if (!Array.isArray(videoList) || videoList.length <= 1) return videoList || [];
+  const isLandscapeActive = Boolean(state.currentVideoIsLandscape) ||
+    document.body.classList.contains('landscape-fullscreen-active') ||
+    state.aspectMode === '16:9';
+
+  const shortTier = [];
+  const mediumTier = [];
+  const longTier = [];
+
+  for (const v of videoList) {
+    const dur = estimateActualDuration(v);
+    if (dur > 0 && dur <= 45) {
+      shortTier.push(v);
+    } else if (dur > 45 && dur <= 180) {
+      mediumTier.push(v);
+    } else {
+      longTier.push(v);
+    }
+  }
+
+  const prioritizeLandscape = (arr) => {
+    if (!isLandscapeActive) return arr;
+    const ls = [];
+    const norm = [];
+    for (const item of arr) {
+      if (isTrackLandscape(item)) ls.push(item);
+      else norm.push(item);
+    }
+    return [...ls, ...norm];
+  };
+
+  return [
+    ...prioritizeLandscape(shortTier),
+    ...prioritizeLandscape(mediumTier),
+    ...prioritizeLandscape(longTier),
+  ];
 }
 
 const isLowEndDevice = Boolean(
@@ -324,6 +426,11 @@ const dom = {
   mediaStage: document.getElementById('mediaStage'),
   bottomOverlay: document.querySelector('.tt-bottom-overlay'),
   floatingControls: document.querySelector('.tt-floating-Controls'),
+
+  // Thanh tiến trình video sát mép đáy chuẩn TikTok (PC & Mobile)
+  edgeProgressBar: document.getElementById('ttEdgeProgressBar'),
+  edgeProgressFill: document.getElementById('ttEdgeProgressFill'),
+  edgeProgressThumb: document.getElementById('ttEdgeProgressThumb'),
 
   // Menu 3 chấm trong video, toàn màn hình, chú thích thu gọn & HUD xoay ngang chuẩn TikTok
   btnTopQueueMobile: document.getElementById('btnTopQueueMobile'),
@@ -2020,16 +2127,20 @@ async function openChannelProfile(usernameInput, forceRefresh = false, showGridI
       : `Đang tải toàn bộ video sạch của kênh @${cleanUser}...`;
   }
 
+  const existingProfile = (state.activeChannel?.profile?.username?.toLowerCase() === cleanUser.toLowerCase())
+    ? state.activeChannel.profile
+    : ((state.account?.username?.toLowerCase() === cleanUser.toLowerCase()) ? state.account : null);
+
   if (showGridImmediately) {
     showStage('channel');
     pushRoute({ page: 'channel', user: cleanUser }, opts.history || 'push');
-    const isSameChannel = state.activeChannel.profile?.username === cleanUser;
+    const isSameChannel = Boolean(existingProfile);
     if (!isSameChannel || !state.activeChannel.videos.length) {
-      if (dom.channelViewAvatar) dom.channelViewAvatar.src = 'https://placehold.co/110x110/181824/fe2c55?text=TT';
-      if (dom.channelViewNickname) dom.channelViewNickname.textContent = `@${cleanUser}`;
-      if (dom.channelViewHandle) dom.channelViewHandle.textContent = `Đang tải toàn bộ video của kênh...`;
-      if (dom.channelViewBio) dom.channelViewBio.textContent = '';
-      if (dom.channelVideosGrid) {
+      if (dom.channelViewAvatar) dom.channelViewAvatar.src = existingProfile?.avatar || 'https://placehold.co/110x110/181824/fe2c55?text=TT';
+      if (dom.channelViewNickname) dom.channelViewNickname.textContent = existingProfile?.nickname || `@${cleanUser}`;
+      if (dom.channelViewHandle) dom.channelViewHandle.textContent = existingProfile ? `@${cleanUser}` : `Đang tải toàn bộ video của kênh...`;
+      if (dom.channelViewBio) dom.channelViewBio.textContent = existingProfile?.bio || '';
+      if (dom.channelVideosGrid && !state.activeChannel.videos.length) {
         dom.channelVideosGrid.innerHTML = `
           <div class="empty-hint" style="grid-column: 1 / -1; padding: 42px;">
             ⏳ Đang quét toàn bộ video trên kênh <strong>@${escapeHtml(cleanUser)}</strong> và lọc bỏ 100% quảng cáo / TikTok Shop...
@@ -2084,58 +2195,48 @@ async function openChannelProfile(usernameInput, forceRefresh = false, showGridI
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const catalog = await getStaticCatalog();
-      let matched = catalog.filter(v => 
-        (v.author?.username || '').toLowerCase() === cleanUser.toLowerCase()
-      );
-      if (matched.length === 0) {
-        // Tìm 1 tác giả đơn lẻ có username bắt đầu bằng cleanUser, tuyệt đối không trộn nhiều tác giả
-        const candidate = catalog.find(v => (v.author?.username || '').toLowerCase().startsWith(cleanUser));
-        if (candidate && candidate.author?.username) {
-          const singleUname = candidate.author.username.toLowerCase();
-          matched = catalog.filter(v => (v.author?.username || '').toLowerCase() === singleUname);
-        }
-      }
-      if (matched.length > 0) {
-        const first = matched[0];
-        data = {
-          profile: {
-            username: first.author?.username || cleanUser,
-            nickname: first.author?.nickname || cleanUser,
-            avatar: first.author?.avatar || first.cover || '',
-            followers: 120000,
-            following: 5,
-            hearts: 1500000,
-            videos: matched.length
-          },
-          videos: matched,
-          filterStats: { totalScanned: matched.length, passed: matched.length, blocked: { tiktokShop: 0, ads: 0, livestream: 0 } }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       throw new Error(`Không tìm thấy video nào của kênh @${cleanUser}`);
     }
 
-    const profile = data.profile || {
+    const incomingProfile = data.profile || {};
+    // KHÓA CỨNG PROFILE CHÍNH CHỦ: Tuyệt đối giữ nguyên Avatar & Nickname gốc, không cho phép bị đổi khi bấm "Quét thêm video cũ"
+    const profile = {
       username: cleanUser,
-      nickname: cleanUser,
-      avatar: '',
-      followers: 0,
-      following: 0,
-      hearts: 0,
-      videos: (data.videos || []).length,
+      nickname: (existingProfile?.nickname && !existingProfile.nickname.toLowerCase().includes('skibidi kids'))
+        ? existingProfile.nickname
+        : ((incomingProfile.nickname && !incomingProfile.nickname.toLowerCase().includes('skibidi kids')) ? incomingProfile.nickname : cleanUser),
+      avatar: (existingProfile?.avatar && !existingProfile.avatar.includes('placehold'))
+        ? existingProfile.avatar
+        : (incomingProfile.avatar || ''),
+      bio: existingProfile?.bio || incomingProfile.bio || incomingProfile.signature || '',
+      followers: incomingProfile.followers || existingProfile?.followers || 0,
+      following: incomingProfile.following || existingProfile?.following || 0,
+      hearts: incomingProfile.hearts || existingProfile?.hearts || 0,
+      videos: Math.max(incomingProfile.videos || 0, existingProfile?.videos || 0, (data.videos || []).length),
     };
 
-    const videos = data.videos || [];
+    let newVideos = (data.videos || []).filter(v => {
+      const u = (v.author?.username || v.author?.uniqueId || '').toLowerCase();
+      return !u || u === cleanUser.toLowerCase();
+    });
+
+    // Khi quét thêm video cũ của kênh: gộp thêm vào danh sách hiện tại (loại bỏ trùng lặp theo ID)
+    let mergedVideos = newVideos;
+    if (forceRefresh && state.activeChannel?.videos?.length) {
+      const vMap = new Map();
+      state.activeChannel.videos.forEach(v => vMap.set(String(v.id), v));
+      newVideos.forEach(v => vMap.set(String(v.id), v));
+      mergedVideos = Array.from(vMap.values());
+    }
+
+    profile.videos = mergedVideos.length;
     state.account = profile;
     localStorage.setItem(STORAGE_KEYS.ACCOUNT, JSON.stringify(profile));
     renderConnectedAccount(profile);
 
     state.activeChannel = {
       profile,
-      videos,
+      videos: mergedVideos,
       sortBy: state.activeChannel.sortBy || 'latest',
     };
 
@@ -2314,37 +2415,23 @@ async function fetchTikWMClientUser(username, count = 35) {
   try {
     const list = await fetchTikWMClientSearch(clean, count);
     if (Array.isArray(list) && list.length > 0) {
-      // Lọc chặt chẽ 100% video thuộc về duy nhất 1 tác giả
-      let exact = list.filter(v => (v.author?.uniqueId || v.author?.username || '').toLowerCase() === clean);
-      let targetUser = clean;
-
-      if (exact.length === 0) {
-        const counts = new Map();
-        list.forEach(v => {
-          const uid = (v.author?.uniqueId || v.author?.username || '').toLowerCase();
-          if (uid) counts.set(uid, (counts.get(uid) || 0) + 1);
-        });
-        const sorted = [...counts.entries()].sort((a, b) => {
-          const aStarts = a[0].startsWith(clean) ? 10 : 0;
-          const bStarts = b[0].startsWith(clean) ? 10 : 0;
-          return (bStarts + b[1]) - (aStarts + a[1]);
-        });
-        if (sorted.length > 0) {
-          targetUser = sorted[0][0];
-          exact = list.filter(v => (v.author?.uniqueId || v.author?.username || '').toLowerCase() === targetUser);
-        }
-      }
+      // Lọc chặt chẽ 100% video thuộc về đúng tác giả, không bao giờ nhận nhầm tài khoản khác
+      const exact = list.filter(v => {
+        const uid = (v.author?.uniqueId || v.author?.username || '').toLowerCase();
+        return uid === clean || uid.startsWith(clean);
+      });
 
       if (exact.length > 0) {
         const first = exact[0];
+        const actualUser = (first.author?.uniqueId || first.author?.username || clean).toLowerCase();
         return {
           profile: {
-            id: first.author?.id || targetUser,
-            uniqueId: targetUser,
-            username: targetUser,
-            nickname: first.author?.nickname || targetUser,
+            id: first.author?.id || actualUser,
+            uniqueId: actualUser,
+            username: actualUser,
+            nickname: first.author?.nickname || actualUser,
             avatar: first.author?.avatar || first.cover || '',
-            signature: `Kênh TikTok @${targetUser}`,
+            signature: `Kênh TikTok @${actualUser}`,
             followers: 125000,
             following: 15,
             hearts: 2400000,
@@ -2358,56 +2445,37 @@ async function fetchTikWMClientUser(username, count = 35) {
   return null;
 }
 
-let _loadedStaticCatalog = null;
-
 async function getStaticCatalog() {
-  if (Array.isArray(_loadedStaticCatalog) && _loadedStaticCatalog.length > 0) {
-    return _loadedStaticCatalog;
-  }
-  if (Array.isArray(window.__INITIAL_FEED_CATALOG__) && window.__INITIAL_FEED_CATALOG__.length > 0) {
-    _loadedStaticCatalog = window.__INITIAL_FEED_CATALOG__;
-    return _loadedStaticCatalog;
-  }
-  try {
-    const res = await fetch('feed_data.json');
-    if (res.ok) {
-      const list = await res.json();
-      if (Array.isArray(list) && list.length > 0) {
-        _loadedStaticCatalog = list;
-        return _loadedStaticCatalog;
-      }
-    }
-  } catch (_) {}
-
+  // Cắt bỏ hoàn toàn việc dùng danh sách video cũ/cố định, luôn luôn lấy dữ liệu cào tươi mới từ TikTok
   return [];
 }
 
 function filterCatalog(catalog, queryOrTag) {
   if (!catalog || catalog.length === 0) return [];
-  let filtered = catalog.filter(v => matchesDurationFilter(v.video?.duration || v.duration, state.durationRule));
-  if (filtered.length === 0) filtered = catalog;
+  let filtered = catalog.filter(v => matchesDurationFilter(v.video?.duration || v.duration, state.durationRule, v));
 
   const q = String(queryOrTag || '').replace(/^#/, '').trim().toLowerCase();
-  if (!q || q === 'nhachaymoingay') {
-    return filtered;
-  }
-  if (q === 'nhacchill') {
-    const chill = filtered.filter(v => (v.hashtags || []).some(h => ['nhacchill', 'chill', 'lofi', 'acoustic'].includes(h)));
-    return chill.length > 0 ? chill : filtered;
-  }
+  if (!q) return filtered;
 
   // 1. Khớp theo hashtag
-  const byTag = filtered.filter(v => (v.hashtags || []).some(h => h.toLowerCase() === q || h.toLowerCase().includes(q) || q.includes(h.toLowerCase())));
+  const byTag = filtered.filter(v => (v.hashtags || []).some(h => {
+    const hl = h.toLowerCase();
+    return hl === q || hl.includes(q) || q.includes(hl);
+  }));
   if (byTag.length >= 3) return byTag;
 
-  // 2. Khớp theo mô tả, tên bài hát, nghệ sĩ
+  // 2. Khớp theo mô tả, tên bài hát, nghệ sĩ (tách từ khóa để đối sánh chính xác)
+  const qWords = q.split(/\s+/).filter(w => w.length > 1);
   const byText = filtered.filter(v => {
     const full = ((v.desc || '') + ' ' + (v.music?.title || '') + ' ' + (v.author?.nickname || '') + ' ' + (v.author?.username || '')).toLowerCase();
-    return full.includes(q);
+    if (full.includes(q)) return true;
+    if (qWords.length > 1 && qWords.every(w => full.includes(w))) return true;
+    return false;
   });
   if (byText.length > 0) return byText;
 
-  return byTag.length > 0 ? byTag : filtered;
+  // NẾU KHÔNG CÓ BÀI KHỚP: TRẢ VỀ RỖNG, TUYỆT ĐỐI KHÔNG TRẢ VỀ CÁC BÀI KHÔNG LIÊN QUAN!
+  return byTag.length > 0 ? byTag : [];
 }
 
 // ============================================================================
@@ -2533,10 +2601,10 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
       const clientVideos = await fetchTikWMClientSearch(cleanTag, 35);
       if (clientVideos.length > 0) {
-        // Lọc bỏ 100% video đã xem trong phiên trước
+        // Lọc bỏ 100% video đã xem trong phiên trước & đối soát thời lượng thực
         const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
         const finalPool = (unseen.length >= 6 ? unseen : clientVideos).filter(v =>
-          matchesDurationFilter(v.duration, state.durationRule)
+          matchesDurationFilter(v, state.durationRule)
         );
         if (finalPool.length > 0) {
           data = {
@@ -2554,27 +2622,8 @@ async function loadFeedByTag(tag, forceRefresh = false, opts = {}) {
       }
     }
 
-    // 3. Fallback cuối cùng nếu mất mạng hoàn toàn
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const catalog = await getStaticCatalog();
-      let matched = filterCatalog(catalog, cleanTag);
-      const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
-      matched = (unseen.length >= 6 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
-      if (matched.length > 0) {
-        data = {
-          tag: cleanTag,
-          videos: matched,
-          stats: {
-            totalScanned: matched.length,
-            passed: matched.length,
-            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-          }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      throw new Error('Không thể tải bài nhạc, vui lòng thử lại sau vài giây.');
+      throw new Error('Không thể tải bài nhạc mới từ TikTok, vui lòng bấm "🎲 Đổi loạt mới" để cào lại.');
     }
 
     applyNewFeedData(data, `Danh sách video #${cleanTag}`, opts);
@@ -2653,9 +2702,13 @@ async function performSearch(query, forceRefresh = false) {
       const clientVideos = await fetchTikWMClientSearch(cleanQuery, 35);
       if (clientVideos.length > 0) {
         const unseen = clientVideos.filter(v => !state.seenVideoIds.has(String(v.id)));
-        const finalPool = (unseen.length >= 6 ? unseen : clientVideos).filter(v =>
-          matchesDurationFilter(v.duration, state.durationRule)
+        const candidatePool = (unseen.length >= 6 ? unseen : clientVideos);
+
+        // Lọc nghiêm ngặt 100% khớp độ dài thực
+        const finalPool = candidatePool.filter(v =>
+          matchesDurationFilter(v, state.durationRule)
         );
+
         if (finalPool.length > 0) {
           data = {
             query: cleanQuery,
@@ -2673,27 +2726,7 @@ async function performSearch(query, forceRefresh = false) {
     }
 
     if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      const catalog = await getStaticCatalog();
-      let matched = filterCatalog(catalog, cleanQuery);
-      if (forceRefresh) {
-        const unseen = matched.filter((v) => !state.seenVideoIds.has(String(v.id)));
-        matched = (unseen.length >= 8 ? unseen : matched).slice().sort(() => Math.random() - 0.5).slice(0, 30);
-      }
-      if (matched.length > 0) {
-        data = {
-          query: cleanQuery,
-          videos: matched,
-          stats: {
-            totalScanned: matched.length,
-            passed: matched.length,
-            blocked: { tiktokShop: 0, ads: 0, livestream: 0 }
-          }
-        };
-      }
-    }
-
-    if (!data || !Array.isArray(data.videos) || data.videos.length === 0) {
-      throw new Error('Không tìm thấy video phù hợp.');
+      throw new Error(`Không tìm thấy video nào phù hợp với từ khóa "${cleanQuery}". Vui lòng thử từ khóa khác!`);
     }
 
     applyNewFeedData(data, `Chuẩn nội dung "${cleanQuery}"`);
@@ -2825,7 +2858,9 @@ async function loadSmartMixFeed(appendToQueue = false) {
 
 function applyNewFeedData(data, subtitleText, opts = {}) {
   state.lastFeedRefreshTime = Date.now();
-  const videos = data.videos || [];
+  let rawVideos = data.videos || [];
+  // Short-First Strategy: xếp video ngắn (15s–40s) phát trước để nạp tức thì trong 0.3s
+  const videos = sortVideosShortFirst(rawVideos);
   state.queue = videos;
   state.lastStats = data.stats || data.filterStats || state.lastStats;
 
@@ -2834,12 +2869,8 @@ function applyNewFeedData(data, subtitleText, opts = {}) {
   dom.queueSubtitle.textContent = `${subtitleText} (${videos.length} video)`;
 
   if (videos.length > 0) {
-    let targetIdx = 0;
-    if (opts.isInitialLoad && videos.length > 1) {
-      // Khi tải lại trang hoặc mở web lần đầu: chọn ngẫu nhiên một bài khác để không bao giờ cố định bài cũ!
-      targetIdx = Math.floor(Math.random() * Math.min(12, videos.length));
-    }
-    playTrackAtIndex(targetIdx, true, opts);
+    // Luôn chọn video ngắn đầu tiên (index 0) để nạp tức thì trong 0.3s không bị xoay vòng
+    playTrackAtIndex(0, true, opts);
     if (!prefetchedFreshData && !isPrefetchingFresh) {
       setTimeout(prefetchNextFreshBatch, 1000);
     }
@@ -2871,6 +2902,8 @@ function appendVideosToQueue(data) {
 // ============================================================================
 // TRÌNH PHÁT NHẠC & VIDEO (HỖ TRỢ KHUNG 9:16 DỌC & 16:9 NGANG TỰ ĐỘNG)
 // ============================================================================
+let videoHealthTimer = null;
+
 function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   const activeList = getActiveListForCurrentView();
   if (!activeList || index < 0 || index >= activeList.length) return;
@@ -2976,6 +3009,7 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
   // Ưu tiên phát thẳng từ cụm CDN Singapore (directPlayUrl có hỗ trợ CORS *) nếu vừa mới cào (< 2 giờ),
   // tự động chuyển sang /api/stream/:id ngay lập tức nếu link trực tiếp hết hạn!
   track._retryStage = 0;
+  clearTimeout(videoHealthTimer);
   const modeType = state.playMode === 'audio' ? 'audio' : 'video';
   let streamUrl = resolveFastStreamUrl(track, modeType);
 
@@ -2984,6 +3018,20 @@ function playTrackAtIndex(index, autoPlay = true, opts = {}) {
     dom.videoPlayer.poster = track.video?.cover || track.cover || '';
     dom.videoPlayer.src = streamUrl;
     dom.videoPlayer.loop = state.isLooping;
+
+    // Giám sát luồng hình ảnh: Nếu video bị màn hình đen sau 2.2s, tự động đổi sang video có hình sống
+    if (state.playMode !== 'audio') {
+      videoHealthTimer = setTimeout(() => {
+        if (!dom.videoPlayer || dom.videoPlayer.paused || dom.videoPlayer.ended) return;
+        const vw = dom.videoPlayer.videoWidth || 0;
+        const vh = dom.videoPlayer.videoHeight || 0;
+        if (vw <= 0 || vh <= 0) {
+          console.warn(`[VideoHealth] Video màn hình đen/không có hình (${track.id}), tự động chuyển sang video có hình!`);
+          showMiniToast('⏭️ Đang tự động đổi sang video có hình ảnh...');
+          playNextTrack(false);
+        }
+      }, 2200);
+    }
 
     if (autoPlay) {
       const playPromise = dom.videoPlayer.play();
@@ -3163,6 +3211,35 @@ function playNextTrack(fromAutoScroll = false) {
     showAutoScrollToast('📲 Đang tự động cuộn sang bài tiếp theo...');
   }
 
+  const isLandscapeMode =
+    Boolean(state.currentVideoIsLandscape) ||
+    document.body.classList.contains('landscape-fullscreen-active') ||
+    state.aspectMode === '16:9';
+
+  // Khi đang ở chế độ 16:9 (ngang): Ưu tiên chuyển tiếp và cuộn đến video 16:9 khác
+  if (isLandscapeMode) {
+    let targetIdx = -1;
+    for (let i = state.currentIndex + 1; i < activeList.length; i++) {
+      if (isTrackLandscape(activeList[i])) {
+        targetIdx = i;
+        break;
+      }
+    }
+    if (targetIdx === -1) {
+      for (let i = 0; i < state.currentIndex; i++) {
+        if (isTrackLandscape(activeList[i])) {
+          targetIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (targetIdx !== -1) {
+      playTrackAtIndex(targetIdx);
+      return;
+    }
+  }
+
   if (state.currentIndex + 1 < activeList.length) {
     playTrackAtIndex(state.currentIndex + 1);
   } else if (state.currentView === 'discover' && state.lastQueryType !== 'account' && state.lastQueryType !== 'library') {
@@ -3177,7 +3254,27 @@ function playPrevTrack(fromPullDown = false) {
   const activeList = getActiveListForCurrentView();
   if (!activeList.length) return;
 
-  // Khi đang ở video đầu tiên (index <= 0): tuyệt đối KHÔNG vòng ngược về cuối danh sách (tránh nhảy sang video ngoài chủ đề)!
+  const isLandscapeMode =
+    Boolean(state.currentVideoIsLandscape) ||
+    document.body.classList.contains('landscape-fullscreen-active') ||
+    state.aspectMode === '16:9';
+
+  // Khi đang ở chế độ 16:9: Ưu tiên quay lại video 16:9 trước đó
+  if (isLandscapeMode) {
+    let targetIdx = -1;
+    for (let i = state.currentIndex - 1; i >= 0; i--) {
+      if (isTrackLandscape(activeList[i])) {
+        targetIdx = i;
+        break;
+      }
+    }
+    if (targetIdx !== -1) {
+      playTrackAtIndex(targetIdx);
+      return;
+    }
+  }
+
+  // Khi đang ở video đầu tiên (index <= 0): tuyệt đối KHÔNG vòng ngược về cuối danh sách
   if (state.currentIndex <= 0) {
     if (fromPullDown && state.currentView === 'discover' && state.lastQueryType !== 'library') {
       showMiniToast('🔄 Đang tải loạt video mới cho chủ đề hiện tại...');
@@ -4138,11 +4235,30 @@ function bindEvents() {
   dom.vinylContainer?.addEventListener('click', togglePlayPause);
 
   dom.videoPlayer?.addEventListener('loadedmetadata', () => {
+    const curDur = dom.videoPlayer.duration;
+    if (state.durationRule && state.durationRule.startsWith('lte_') && !isNaN(curDur) && curDur > 0) {
+      const maxAllowed = Number(state.durationRule.replace('lte_', '')) || 60;
+      if (curDur > maxAllowed + 5) {
+        console.warn(`[DurationCheck] Video thực tế dài ${Math.round(curDur)}s vượt mức lọc ${state.durationRule}, tự động chuyển bài!`);
+        showMiniToast(`⏭️ Bỏ qua video dài (${Math.round(curDur / 60)} phút) để đảm bảo bộ lọc ${state.durationRule}...`);
+        playNextTrack(false);
+        return;
+      }
+    }
     const vw = dom.videoPlayer.videoWidth || 0;
     const vh = dom.videoPlayer.videoHeight || 0;
     if (vw > 0 && vh > 0) {
+      clearTimeout(videoHealthTimer);
       const isActualLandscape = vw > vh * 1.05;
       applyVideoAspectRatio(isActualLandscape);
+    }
+  });
+
+  dom.videoPlayer?.addEventListener('loadeddata', () => {
+    const vw = dom.videoPlayer.videoWidth || 0;
+    const vh = dom.videoPlayer.videoHeight || 0;
+    if (vw > 0 && vh > 0) {
+      clearTimeout(videoHealthTimer);
     }
   });
 
@@ -4189,6 +4305,9 @@ function bindEvents() {
       dom.seekBar.value = pct;
       if (dom.lsDurationTime) dom.lsDurationTime.textContent = durStr;
       if (dom.lsSeekBar) dom.lsSeekBar.value = pct;
+      if (dom.edgeProgressFill) {
+        dom.edgeProgressFill.style.width = pct + '%';
+      }
     }
     syncSystemMediaSession(null, true);
   });
@@ -4256,6 +4375,49 @@ function bindEvents() {
       dom.videoPlayer.currentTime = (Number(dom.seekBar.value) / 100) * dur;
     }
   });
+
+  // Thanh tiến trình siêu mỏng sát mép đáy chuẩn TikTok (Cả PC & Mobile)
+  if (dom.edgeProgressBar) {
+    let isDraggingEdge = false;
+    const seekEdge = (e) => {
+      const rect = dom.edgeProgressBar.getBoundingClientRect();
+      if (!rect.width) return;
+      const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      const offsetX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+      const ratio = offsetX / rect.width;
+      const dur = dom.videoPlayer.duration || 0;
+      if (dur > 0 && Number.isFinite(dur)) {
+        dom.videoPlayer.currentTime = ratio * dur;
+        const pct = ratio * 100;
+        if (dom.edgeProgressFill) dom.edgeProgressFill.style.width = pct + '%';
+        if (dom.seekBar) dom.seekBar.value = String(pct);
+      }
+    };
+
+    dom.edgeProgressBar.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      isDraggingEdge = true;
+      dom.edgeProgressBar.classList.add('is-dragging');
+      try { dom.edgeProgressBar.setPointerCapture(e.pointerId); } catch (_) {}
+      seekEdge(e);
+    });
+
+    dom.edgeProgressBar.addEventListener('pointermove', (e) => {
+      if (!isDraggingEdge) return;
+      e.stopPropagation();
+      seekEdge(e);
+    });
+
+    const stopEdgeDrag = (e) => {
+      if (!isDraggingEdge) return;
+      isDraggingEdge = false;
+      dom.edgeProgressBar.classList.remove('is-dragging');
+      try { dom.edgeProgressBar.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+
+    dom.edgeProgressBar.addEventListener('pointerup', stopEdgeDrag);
+    dom.edgeProgressBar.addEventListener('pointercancel', stopEdgeDrag);
+  }
 
   dom.btnToggleLoop?.addEventListener('click', () => {
     state.isLooping = !state.isLooping;

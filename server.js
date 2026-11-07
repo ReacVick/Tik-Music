@@ -809,8 +809,46 @@ const COMMERCIAL_ANCHOR_REGEX = new RegExp(
 const CAPCUT_ANCHOR_REGEX = /capcut|tt_capcut|viamaker/i;
 const SHOP_ANCHOR_TYPES = new Set([33, 35, 56, 60, 62]);
 
-function checkDurationFilter(durationSec, rule) {
+function estimateActualDurationServer(rawItem, durationSec) {
   const d = Number(durationSec) || 0;
+  if (!rawItem) return d;
+  const title = String(rawItem.desc || rawItem.title || rawItem.caption || '').toLowerCase();
+
+  // 1. Phân tích ngữ nghĩa tiếng/giờ/hour
+  const hourMatch = title.match(/(\d+(?:[.,]\d+)?)\s*(?:tiếng|gi?ờ|h|hour|hours)\b/i);
+  if (hourMatch) {
+    const hours = parseFloat(hourMatch[1].replace(',', '.'));
+    if (!isNaN(hours) && hours > 0) return Math.max(d, Math.round(hours * 3600));
+  }
+
+  // 2. Phân tích ngữ nghĩa phút/min/minute
+  const minMatch = title.match(/(\d+(?:[.,]\d+)?)\s*(?:phút|ph|min|mins|minute|minutes)\b/i);
+  if (minMatch) {
+    const mins = parseFloat(minMatch[1].replace(',', '.'));
+    if (!isNaN(mins) && mins >= 2) {
+      return Math.max(d, Math.round(mins * 60));
+    }
+  }
+
+  // 3. Từ khóa ngầm định video dài (Mixset, Chillout Mix, Nonstop, Tuyển tập...)
+  if (/mix\s*set|chillout\s*mix|full\s*mix|nonstop|liên\s*khúc|tuyển\s*tập|nhạc\s*dài/i.test(title)) {
+    if (d <= 60) return 1800; // Ít nhất 30 phút
+  }
+
+  // 4. Ước lượng qua dung lượng file (Content-Length / size) nếu có
+  const size = Number(rawItem.size || rawItem.video?.size || 0);
+  if (size > 25 * 1024 * 1024 && d <= 60) {
+    return Math.max(d, Math.round(size / (150 * 1024)));
+  }
+
+  return d;
+}
+
+function checkDurationFilter(durationSec, rule, rawItem = null) {
+  let d = Number(durationSec) || 0;
+  if (rawItem) {
+    d = estimateActualDurationServer(rawItem, d);
+  }
   if (!rule || rule === '0' || rule === 'all') return { passed: true };
 
   const str = String(rule).trim().toLowerCase();
@@ -940,7 +978,7 @@ function inspectVideoCleanlinessFast(rawItem, options = {}) {
   const rawDur = Number(videoObj.duration || musicObj.duration || 0);
   const durationSec = isMobileItem && rawDur > 1000 ? Math.round(rawDur / 1000) : rawDur;
 
-  const durCheck = checkDurationFilter(durationSec, durationRule);
+  const durCheck = checkDurationFilter(durationSec, durationRule, rawItem);
   if (!durCheck.passed) {
     return {
       passed: false,
