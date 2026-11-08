@@ -26,7 +26,6 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import android.widget.ProgressBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -45,11 +44,11 @@ class MainActivity : AppCompatActivity() {
             val act = instance ?: return
             act.runOnUiThread {
                 when (action) {
-                    "play" -> act.evalJs("document.querySelectorAll('video').forEach(v=>{v.play().catch(()=>{})});")
-                    "pause" -> act.evalJs("document.querySelectorAll('video').forEach(v=>{v.pause()});")
-                    "toggle" -> act.evalJs("const v=document.querySelector('video');if(v){if(v.paused)v.play().catch(()=>{});else v.pause();}")
-                    "next" -> act.evalJs("window.scrollBy({top:window.innerHeight,behavior:'smooth'});setTimeout(()=>{document.querySelector('video')?.play().catch(()=>{})},500);")
-                    "prev" -> act.evalJs("window.scrollBy({top:-window.innerHeight,behavior:'smooth'});setTimeout(()=>{document.querySelector('video')?.play().catch(()=>{})},500);")
+                    "play" -> act.evalJs("const v=document.querySelector('video');if(v){v.muted=false;v.play().catch(()=>{});}")
+                    "pause" -> act.evalJs("document.querySelector('video')?.pause();")
+                    "toggle" -> act.evalJs("const v=document.querySelector('video');if(v){if(v.paused){v.muted=false;v.play().catch(()=>{});}else{v.pause();}}")
+                    "next" -> act.evalJs("window.scrollBy({top:window.innerHeight,behavior:'smooth'});setTimeout(()=>{const v=document.querySelector('video');if(v){v.muted=false;v.play().catch(()=>{});}},400);")
+                    "prev" -> act.evalJs("window.scrollBy({top:-window.innerHeight,behavior:'smooth'});setTimeout(()=>{const v=document.querySelector('video');if(v){v.muted=false;v.play().catch(()=>{});}},400);")
                 }
             }
         }
@@ -57,72 +56,53 @@ class MainActivity : AppCompatActivity() {
         private const val CHROME_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
-        // CSS sạch loại bỏ 100% rác, Shop và Banner mà KHÔNG gây nháy màn hình
+        // CSS loại bỏ 100% TikTok Shop & Banner tải app mà KHÔNG can thiệp vào Video Player
         private const val PURGE_CSS = """
             [data-e2e="download-app-banner"],
             .download-app-banner,
             [class*="DivBannerWrapper"],
             [class*="DivBannerContainer"],
-            [class*="OpenApp"],
             [class*="open-app"],
+            [class*="OpenApp"],
             [class*="get-app"],
             [class*="GetApp"],
-            [class*="DownloadApp"],
-            [class*="app-banner"],
-            [class*="AppBanner"],
             .tiktok-14j1t75-DivBannerContainer,
             .css-1sdyv6b-DivBannerWrapper,
 
-            /* Xóa triệt để giỏ hàng, thẻ sản phẩm TikTok Shop */
+            /* Xóa triệt để giỏ hàng và thẻ sản phẩm TikTok Shop */
             [data-e2e*="shop"],
-            [data-e2e*="Shop"],
             [data-e2e*="cart"],
-            [data-e2e*="Cart"],
             [class*="tiktok-shop"],
             [class*="TikTokShop"],
             [class*="shop-cart"],
             [class*="ShopCart"],
-            [class*="e-commerce"],
-            [class*="ecommerce"],
-            [class*="ECommerce"],
             [class*="yellow-cart"],
             [class*="product-card"],
             [class*="ProductCard"],
-            [class*="showcase"],
-            [class*="Showcase"],
             [class*="anchor-shop"],
             [class*="AnchorShop"],
             [class*="product-anchor"],
-            [class*="recharge"],
-            [class*="Recharge"],
-            [class*="coin"],
-            [class*="Coin"],
-            [class*="wallet"],
-            [class*="Wallet"],
-            [class*="payment"],
-            [class*="Payment"] {
+            [class*="ProductAnchor"] {
                 display: none !important;
                 visibility: hidden !important;
                 height: 0 !important;
-                max-height: 0 !important;
-                opacity: 0 !important;
                 pointer-events: none !important;
             }
         """
 
-        // Script hook nhẹ nhàng: Tự động bật âm thanh khi bấm video & đẩy siêu dữ liệu lên Đảo Origin
+        // Script tối ưu phát video: Tự động chạy mượt mà, bật tiếng tự nhiên và đồng bộ Đảo Origin
         private const val CLEAN_JS = """
             (function() {
                 if (window.__tiktokBridgeReady) return;
                 window.__tiktokBridgeReady = true;
 
-                // Thêm CSS sạch một lần duy nhất (không loop gây nháy)
+                // 1. Thêm CSS sạch
                 const style = document.createElement('style');
                 style.id = 'tiktok-clean-static-css';
                 style.textContent = `$PURGE_CSS`;
                 (document.head || document.documentElement).appendChild(style);
 
-                // Lắng nghe sự kiện click vào link deep-link snssdk để chặn lỗi
+                // 2. Chặn các link bắt tải app và deep link snssdk
                 document.addEventListener('click', function(e) {
                     const link = e.target.closest('a');
                     if (link && link.href) {
@@ -133,65 +113,81 @@ class MainActivity : AppCompatActivity() {
                     }
                 }, true);
 
-                // Lắng nghe phát video để bật tiếng và đồng bộ với Đảo Origin
-                document.addEventListener('play', function(e) {
-                    if (e.target && e.target.tagName === 'VIDEO') {
-                        const video = e.target;
-                        // Tự động bật âm thanh nếu đang bị tắt tiếng
-                        if (video.muted) {
-                            video.muted = false;
-                        }
+                // 3. Tự động bật âm thanh khi người dùng chạm màn hình lần đầu
+                document.addEventListener('touchstart', function() {
+                    const video = document.querySelector('video');
+                    if (video && video.muted) {
+                        video.muted = false;
+                    }
+                }, { once: true, passive: true });
 
-                        // Lấy thông tin bài hát / video
-                        try {
-                            let title = document.title || 'TikTok Clean';
-                            let author = '@tiktok';
-                            let coverUrl = video.poster || '';
+                // 4. Đảm bảo video tự động play khi chuyển tới
+                function ensureVideoPlays() {
+                    const videos = document.querySelectorAll('video');
+                    videos.forEach(v => {
+                        v.playsInline = true;
+                        v.setAttribute('playsinline', '');
+                        v.setAttribute('webkit-playsinline', '');
 
-                            const container = video.closest('article') || video.parentElement;
-                            if (container) {
-                                const authorEl = container.querySelector('h3, h4, [data-e2e*="author"]');
-                                if (authorEl) author = authorEl.innerText.trim();
-                                const descEl = container.querySelector('[data-e2e*="desc"], p');
-                                if (descEl) title = descEl.innerText.trim();
-                            }
+                        if (v.__ready) return;
+                        v.__ready = true;
 
+                        v.addEventListener('play', function() {
+                            try {
+                                let title = document.title || 'TikTok Clean';
+                                let author = '@tiktok';
+                                let coverUrl = v.poster || '';
+
+                                const container = v.closest('article') || v.parentElement;
+                                if (container) {
+                                    const authorEl = container.querySelector('h3, h4, [data-e2e*="author"]');
+                                    if (authorEl) author = authorEl.innerText.trim();
+                                    const descEl = container.querySelector('[data-e2e*="desc"], p');
+                                    if (descEl) title = descEl.innerText.trim();
+                                }
+
+                                if (window.AndroidBridge) {
+                                    window.AndroidBridge.onVideoUpdate(title, author, coverUrl, true);
+                                }
+                            } catch(err) {}
+                        });
+
+                        v.addEventListener('pause', function() {
                             if (window.AndroidBridge) {
-                                window.AndroidBridge.onVideoUpdate(title, author, coverUrl, true);
+                                window.AndroidBridge.onVideoUpdate('TikTok Clean', '@tiktok', '', false);
                             }
-                        } catch(err) {}
-                    }
-                }, true);
+                        });
 
-                document.addEventListener('pause', function(e) {
-                    if (e.target && e.target.tagName === 'VIDEO') {
-                        if (window.AndroidBridge) {
-                            window.AndroidBridge.onVideoUpdate('TikTok Clean', '@tiktok', '', false);
-                        }
-                    }
-                }, true);
+                        v.addEventListener('ended', function() {
+                            // Tự động cuộn sang video kế tiếp khi xem xong
+                            window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
+                            setTimeout(() => {
+                                const nextV = document.querySelector('video');
+                                if (nextV) {
+                                    nextV.muted = false;
+                                    nextV.play().catch(()=>{});
+                                }
+                            }, 500);
+                        });
+                    });
+                }
 
-                document.addEventListener('ended', function(e) {
-                    if (e.target && e.target.tagName === 'VIDEO') {
-                        // Tự động cuộn sang video kế tiếp khi xem xong
-                        window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
-                    }
-                }, true);
+                setInterval(ensureVideoPlays, 1500);
+                ensureVideoPlays();
             })();
         """
     }
 
     private lateinit var webView: WebView
     private lateinit var initProgress: ProgressBar
-    private var customVideoView: View? = null
-    private var customVideoCallback: WebChromeClient.CustomViewCallback? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            // Khi tắt màn hình khóa máy: Giữ video tiếp tục phát âm thanh liên tục
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                 runOnUiThread {
                     webView.resumeTimers()
-                    evalJs("document.querySelectorAll('video').forEach(v=>{v.play().catch(()=>{})});")
+                    evalJs("const v=document.querySelector('video');if(v&&v.paused){v.play().catch(()=>{});}")
                 }
             }
         }
@@ -225,6 +221,7 @@ class MainActivity : AppCompatActivity() {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
+        // Cho phép video tự động phát không cần cử chỉ ép buộc
         settings.mediaPlaybackRequiresUserGesture = false
         settings.allowFileAccess = true
         settings.allowContentAccess = true
@@ -243,7 +240,7 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        // Tăng tốc phần cứng GPU để video chạy mượt mà 60fps/120fps không bị giật lag
+        // Tăng tốc phần cứng GPU để video render mượt mà 60fps/120fps
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         applyCommonSettings(webView.settings)
 
@@ -260,34 +257,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Hỗ trợ hiển thị video toàn màn hình mượt mà không bị đen màn hình
-            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                if (customVideoView != null) {
-                    onHideCustomView()
-                    return
-                }
-                customVideoView = view
-                customVideoCallback = callback
-                val decor = window.decorView as FrameLayout
-                decor.addView(
-                    view,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-                webView.visibility = View.GONE
-            }
-
-            override fun onHideCustomView() {
-                val decor = window.decorView as FrameLayout
-                decor.removeView(customVideoView)
-                customVideoView = null
-                customVideoCallback?.onCustomViewHidden()
-                webView.visibility = View.VISIBLE
-            }
-
-            // Hỗ trợ cửa sổ đăng nhập Google / Facebook popup
+            // Hỗ trợ popup đăng nhập Google OAuth / Facebook an toàn
             override fun onCreateWindow(
                 view: WebView?,
                 isDialog: Boolean,
@@ -348,15 +318,15 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val url = request?.url?.toString() ?: return true
 
-                // Nếu là URL web của TikTok hoặc trang web hợp lệ:
+                // Cho phép mở tất cả các trang video, hồ sơ của TikTok trong WebView
                 if (url.startsWith("http://") || url.startsWith("https://")) {
                     if (url.contains("play.google.com") || url.contains("tiktok.com/download")) {
-                        return true // Chặn link ép tải app
+                        return true // Chặn link tải app
                     }
-                    return false // Cho phép mở video và trang bình thường trong WebView
+                    return false // Tiếp tục xem video trong WebView
                 }
 
-                // Nếu là deep-link snssdk:// cố ý ép mở app gốc:
+                // Chặn triệt để và giải mã deep-link snssdk://
                 try {
                     val uri = Uri.parse(url)
                     val paramsUrl = uri.getQueryParameter("params_url")
@@ -445,10 +415,6 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (customVideoView != null) {
-            webView.webChromeClient?.onHideCustomView()
-            return
-        }
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
