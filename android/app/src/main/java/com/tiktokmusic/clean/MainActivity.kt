@@ -2,8 +2,10 @@ package com.tiktokmusic.clean
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -29,12 +31,25 @@ import java.lang.ref.WeakReference
 
 /**
  * KeepAliveWebView: Giữ luồng phát nhạc/video HTML5 & bộ xử lý âm thanh Web Audio Dolby Atmos
- * chạy ngầm 100% liên tục kể cả khi người dùng thoát ra màn hình chính hoặc tắt màn hình khóa máy.
+ * chạy ngầm 100% liên tục kể cả khi người dùng thoát ra màn hình chính hoặc tắt màn hình khóa máy trên OriginOS 6.
  */
 class KeepAliveWebView(context: Context) : WebView(context) {
     override fun onWindowVisibilityChanged(visibility: Int) {
         // Luôn báo trạng thái VISIBLE cho nhân Chromium để không bao giờ tự ngắt nhạc khi chạy ngầm
         super.onWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, View.VISIBLE)
+    }
+
+    override fun dispatchWindowVisibilityChanged(visibility: Int) {
+        super.dispatchWindowVisibilityChanged(View.VISIBLE)
+    }
+
+    override fun onScreenStateChanged(screenState: Int) {
+        // Luôn báo màn hình đang BẬT để nhân Chromium không dừng decode âm thanh khi khóa máy
+        super.onScreenStateChanged(View.SCREEN_STATE_ON)
     }
 }
 
@@ -62,6 +77,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fullscreenContainer: FrameLayout
     private var isLandscapeLocked: Boolean = false
 
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            webView.post {
+                webView.resumeTimers()
+                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                    webView.evaluateJavascript(
+                        "window.AndroidBridge && window.AndroidBridge.onScreenLocked && window.AndroidBridge.onScreenLocked();",
+                        null
+                    )
+                }
+            }
+        }
+    }
+
     // Ưu tiên nạp trực tiếp từ CDN tốc độ cao của Hugging Face Space, tự động fallback về bộ nhớ trong của APK nếu mất mạng
     private val ONLINE_URL = "https://binh007-tik-music.static.hf.space/?v=20261108v2"
     private val OFFLINE_URL = "file:///android_asset/index.html"
@@ -78,6 +107,14 @@ class MainActivity : AppCompatActivity() {
 
         requestNotificationPermissionIfNeeded()
         startOriginMediaService()
+
+        try {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            registerReceiver(screenReceiver, filter)
+        } catch (_: Exception) {}
 
         val rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#07080d"))
@@ -314,6 +351,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (_: Exception) {}
         try {
             stopService(Intent(this, OriginMediaService::class.java))
         } catch (_: Exception) {}

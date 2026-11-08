@@ -305,7 +305,7 @@ class OriginMediaService : Service() {
         }
 
         builder
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(currentTitle)
             .setContentText(currentArtist)
             .setSubText("TikTok Music Clean")
