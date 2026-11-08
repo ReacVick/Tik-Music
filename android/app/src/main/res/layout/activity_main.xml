@@ -1,18 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
     android:keepScreenOn="true">
 
-    <WebView
-        android:id="@+id/webView"
+    <!-- 1. ViewPager2 lướt dọc 120Hz Native TikTok Snap to Page -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#000000"
-        android:scrollbars="none"
-        android:overScrollMode="never" />
+        android:orientation="vertical" />
 
+    <!-- 2. Thanh Tab trên cùng (Đang theo dõi | Dành cho bạn) -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="38dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvTabFollowing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:text="Đang theo dõi"
+            android:textColor="#B3FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="|"
+            android:textColor="#40FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tvTabForYou"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:text="Dành cho bạn"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 3. Vòng tròn tải lúc khởi động -->
     <ProgressBar
         android:id="@+id/initProgress"
         style="?android:attr/progressBarStyleLarge"
