@@ -12,7 +12,7 @@ class TikTokRepository {
 
     private val executor = Executors.newFixedThreadPool(4)
     private val seenVideoIds = Collections.synchronizedSet(mutableSetOf<String>())
-    private val allLoadedVideos = Collections.synchronizedList(mutableListOf<TikTokItem>())
+    val allLoadedVideos = Collections.synchronizedList(mutableListOf<TikTokItem>())
 
     // Thuật toán đề xuất: Lưu trữ điểm yêu thích của người dùng đối với các chủ đề
     private val userTagAffinities = ConcurrentHashMap<String, Float>().apply {
@@ -34,7 +34,7 @@ class TikTokRepository {
             val collectedVnItems = mutableListOf<TikTokItem>()
             var attempts = 0
 
-            // Lặp tối đa 3 lần để thu thập đủ số lượng video Việt Nam chất lượng cao
+            // Lặp để thu thập đủ số lượng video Việt Nam chất lượng cao
             while (collectedVnItems.size < targetCount && attempts < 4) {
                 attempts++
                 try {
@@ -43,6 +43,7 @@ class TikTokRepository {
                         connectTimeout = 6000
                         readTimeout = 6000
                         setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                        setRequestProperty("Referer", "https://www.tikwm.com/")
                         setRequestProperty("Accept", "application/json")
                     }
 
@@ -104,12 +105,15 @@ class TikTokRepository {
 
             // Nếu mạng chậm hoặc ít video mới, sắp xếp lại theo điểm đề xuất sở thích của người dùng
             val rankedList = rankVideosByRecommendation(collectedVnItems)
-            onResult(rankedList)
+            onResult(rankedList.ifEmpty { allLoadedVideos.take(20) })
         }
     }
 
     /**
-     * Thuật toán tìm kiếm thông minh: Không phân biệt dấu tiếng Việt, tìm theo nhạc, lời, ca sĩ
+     * Thuật toán tìm kiếm thông minh đa nguồn:
+     * - Không phân biệt dấu tiếng Việt
+     * - Tìm kiếm theo ca sĩ, bài hát, lời, hashtag
+     * - Nạp thêm đợt dữ liệu mới để trả về hàng chục kết quả phong phú
      */
     fun searchVideos(
         query: String,
@@ -122,76 +126,100 @@ class TikTokRepository {
         }
 
         executor.execute {
-            // 1. Tìm kiếm trong kho video hiện có trước
-            val matched = allLoadedVideos.filter { item ->
+            val queryWords = qNorm.split(" ").filter { it.length >= 2 }
+
+            // 1. Tìm kiếm trong kho video hiện có với điểm liên quan
+            val matchedWithScore = allLoadedVideos.mapNotNull { item ->
                 val titleNorm = normalizeVietnamese(item.title)
                 val authorNorm = normalizeVietnamese(item.author)
                 val soundNorm = normalizeVietnamese(item.soundTitle)
                 val idNorm = normalizeVietnamese(item.authorUniqueId)
 
-                titleNorm.contains(qNorm) ||
-                authorNorm.contains(qNorm) ||
-                soundNorm.contains(qNorm) ||
-                idNorm.contains(qNorm)
-            }.toMutableList()
+                var score = 0
+                if (titleNorm.contains(qNorm)) score += 10
+                if (soundNorm.contains(qNorm)) score += 8
+                if (authorNorm.contains(qNorm) || idNorm.contains(qNorm)) score += 12
 
-            // 2. Nếu kết quả trong kho ít hơn 8, nạp thêm 1 đợt video mới để mở rộng kết quả
-            if (matched.size < 8) {
-                try {
-                    val apiUrl = "https://www.tikwm.com/api/feed/list?region=VN&count=30"
-                    val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 5000
-                        readTimeout = 5000
-                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile")
-                    }
-                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val root = JSONObject(jsonStr)
-                    val data = root.optJSONArray("data")
-                    if (data != null) {
-                        for (i in 0 until data.length()) {
-                            val obj = data.getJSONObject(i)
-                            val playUrl = obj.optString("play")
-                            val id = obj.optString("video_id", "vid_s_${System.currentTimeMillis()}_$i")
-                            if (playUrl.isNotBlank() && !seenVideoIds.contains(id)) {
-                                val title = obj.optString("title", "")
-                                val authorObj = obj.optJSONObject("author")
-                                val author = authorObj?.optString("nickname") ?: "@tiktok"
-                                val musicObj = obj.optJSONObject("music_info")
-                                val soundTitle = musicObj?.optString("title") ?: ""
+                for (word in queryWords) {
+                    if (titleNorm.contains(word)) score += 3
+                    if (soundNorm.contains(word)) score += 2
+                    if (authorNorm.contains(word)) score += 3
+                }
 
-                                val titleNorm = normalizeVietnamese(title)
-                                val soundNorm = normalizeVietnamese(soundTitle)
-                                val authorNorm = normalizeVietnamese(author)
+                if (score > 0) Pair(item, score) else null
+            }.sortedByDescending { it.second }.map { it.first }.toMutableList()
 
-                                if (titleNorm.contains(qNorm) || soundNorm.contains(qNorm) || authorNorm.contains(qNorm) || isVietnameseContent(obj, title, author, soundTitle)) {
+            // 2. Nạp thêm các đợt video mới để mở rộng kết quả tìm kiếm nếu kết quả còn ít
+            if (matchedWithScore.size < 16) {
+                for (attempt in 1..2) {
+                    try {
+                        val apiUrl = "https://www.tikwm.com/api/feed/list?region=VN&count=30"
+                        val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = 5000
+                            readTimeout = 5000
+                            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                            setRequestProperty("Referer", "https://www.tikwm.com/")
+                            setRequestProperty("Accept", "application/json")
+                        }
+                        val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                        val root = JSONObject(jsonStr)
+                        val data = root.optJSONArray("data")
+                        if (data != null) {
+                            for (i in 0 until data.length()) {
+                                val obj = data.getJSONObject(i)
+                                val playUrl = obj.optString("play")
+                                val id = obj.optString("video_id", "vid_s_${System.currentTimeMillis()}_$i")
+                                if (playUrl.isNotBlank() && !seenVideoIds.contains(id)) {
+                                    val title = obj.optString("title", "")
+                                    val authorObj = obj.optJSONObject("author")
+                                    val author = authorObj?.optString("nickname") ?: "@tiktok"
+                                    val uniqueId = authorObj?.optString("unique_id") ?: ""
+                                    val avatar = authorObj?.optString("avatar") ?: ""
+                                    val musicObj = obj.optJSONObject("music_info")
+                                    val soundTitle = musicObj?.optString("title") ?: "♫ Âm thanh gốc"
+
                                     seenVideoIds.add(id)
                                     val newItem = TikTokItem(
                                         id = id,
                                         videoUrl = playUrl,
                                         title = if (title.isNotEmpty()) title else "TikTok Video",
                                         author = if (author.startsWith("@")) author else "@$author",
-                                        authorUniqueId = authorObj?.optString("unique_id") ?: "",
-                                        authorAvatar = authorObj?.optString("avatar") ?: "",
-                                        soundTitle = if (soundTitle.isNotEmpty()) soundTitle else "♫ Âm thanh gốc",
+                                        authorUniqueId = uniqueId,
+                                        authorAvatar = avatar,
+                                        soundTitle = soundTitle,
                                         coverUrl = obj.optString("cover"),
                                         likeCount = formatCount(obj.optInt("digg_count", 18200)),
                                         commentCount = formatCount(obj.optInt("comment_count", 950)),
                                         shareCount = formatCount(obj.optInt("share_count", 3200))
                                     )
                                     allLoadedVideos.add(newItem)
-                                    if (titleNorm.contains(qNorm) || soundNorm.contains(qNorm) || authorNorm.contains(qNorm)) {
-                                        matched.add(newItem)
+
+                                    val titleNorm = normalizeVietnamese(title)
+                                    val soundNorm = normalizeVietnamese(soundTitle)
+                                    val authorNorm = normalizeVietnamese(author)
+
+                                    val matchesWord = queryWords.any { titleNorm.contains(it) || soundNorm.contains(it) || authorNorm.contains(it) }
+                                    if (titleNorm.contains(qNorm) || soundNorm.contains(qNorm) || authorNorm.contains(qNorm) || matchesWord) {
+                                        matchedWithScore.add(newItem)
                                     }
                                 }
                             }
                         }
-                    }
-                } catch (_: Exception) {}
+                    } catch (_: Exception) {}
+                }
             }
 
-            // Sắp xếp kết quả tìm kiếm theo độ liên quan và lượt thích
-            matched.sortByDescending { it.likeCount }
-            onResult(if (matched.isNotEmpty()) matched else allLoadedVideos.take(20))
+            // 3. Nếu kết quả vẫn dưới 10, bổ sung các video Việt Nam hàng đầu để luôn hiển thị đầy đủ Grid chuẩn TikTok
+            val finalResults = if (matchedWithScore.size >= 8) {
+                matchedWithScore
+            } else {
+                val combined = matchedWithScore.toMutableList()
+                val remaining = allLoadedVideos.filter { !combined.contains(it) }.take(24 - combined.size)
+                combined.addAll(remaining)
+                combined
+            }
+
+            onResult(finalResults)
         }
     }
 
@@ -248,11 +276,21 @@ class TikTokRepository {
     }
 
     fun getVideosByAuthor(authorUniqueId: String, authorNickname: String): List<TikTokItem> {
-        return allLoadedVideos.filter {
+        val direct = allLoadedVideos.filter {
             (authorUniqueId.isNotEmpty() && it.authorUniqueId.equals(authorUniqueId, ignoreCase = true)) ||
             it.author.equals(authorNickname, ignoreCase = true) ||
             it.author.equals("@$authorNickname", ignoreCase = true)
         }
+
+        if (direct.size >= 6) {
+            return direct
+        }
+
+        // Bổ sung các video hấp dẫn khác để lưới 3 cột của Profile luôn đầy đặn (6-12 video)
+        val result = direct.toMutableList()
+        val extra = allLoadedVideos.filter { !result.contains(it) }.take(9 - result.size)
+        result.addAll(extra)
+        return result
     }
 
     fun normalizeVietnamese(str: String): String {

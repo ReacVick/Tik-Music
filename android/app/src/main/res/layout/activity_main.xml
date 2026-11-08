@@ -14,7 +14,7 @@
         android:layout_height="match_parent"
         android:orientation="vertical" />
 
-    <!-- 2. Thanh điều hướng trên cùng (Auto-Scroll | Tabs | Kính lúp) -->
+    <!-- 2. Thanh điều hướng trên cùng chuẩn TikTok Mobile (Không LIVE - Tabs: Bạn bè | Đã follow | Đề xuất) -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -22,24 +22,24 @@
         android:layout_gravity="top"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="14dp"
+        android:paddingHorizontal="12dp"
         android:paddingTop="38dp"
         android:paddingBottom="6dp">
 
-        <!-- Nút Tự động cuộn (Bật / Tắt tức thì không đè chữ) -->
+        <!-- Nút Tự động cuộn thu gọn tinh tế -->
         <TextView
             android:id="@+id/btnToggleAutoScroll"
             android:layout_width="wrap_content"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:background="@drawable/bg_pill_autoscroll_on"
             android:gravity="center"
             android:paddingHorizontal="8dp"
             android:text="⚡ Tự cuộn"
             android:textColor="#00E676"
-            android:textSize="11sp"
+            android:textSize="10.5sp"
             android:textStyle="bold" />
 
-        <!-- Tabs ở giữa: Đang theo dõi | Dành cho bạn -->
+        <!-- Tabs ở giữa chuẩn TikTok: Bạn bè | Đã follow | Đề xuất -->
         <LinearLayout
             android:id="@+id/tabsContainer"
             android:layout_width="0dp"
@@ -48,59 +48,90 @@
             android:gravity="center"
             android:orientation="horizontal">
 
+            <!-- Tab 1: Bạn bè -->
+            <LinearLayout
+                android:id="@+id/tabFriendsLayout"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="4dp">
+
+                <TextView
+                    android:id="@+id/tvTabFriends"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Bạn bè"
+                    android:textColor="#88FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/indicatorFriends"
+                    android:layout_width="22dp"
+                    android:layout_height="2.5dp"
+                    android:layout_marginTop="3dp"
+                    android:background="#FFFFFF"
+                    android:visibility="invisible" />
+            </LinearLayout>
+
+            <!-- Tab 2: Đã follow -->
             <LinearLayout
                 android:id="@+id/tabFollowingLayout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="10dp"
+                android:paddingHorizontal="6dp"
                 android:paddingVertical="4dp">
 
                 <TextView
                     android:id="@+id/tvTabFollowing"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Đang theo dõi"
+                    android:text="Đã follow"
                     android:textColor="#88FFFFFF"
-                    android:textSize="16sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
 
                 <View
                     android:id="@+id/indicatorFollowing"
-                    android:layout_width="24dp"
-                    android:layout_height="2dp"
-                    android:layout_marginTop="4dp"
+                    android:layout_width="22dp"
+                    android:layout_height="2.5dp"
+                    android:layout_marginTop="3dp"
                     android:background="#FFFFFF"
                     android:visibility="invisible" />
             </LinearLayout>
 
+            <!-- Tab 3: Đề xuất (Mặc định chọn) -->
             <LinearLayout
                 android:id="@+id/tabForYouLayout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="10dp"
+                android:paddingHorizontal="6dp"
                 android:paddingVertical="4dp">
 
                 <TextView
                     android:id="@+id/tvTabForYou"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Dành cho bạn"
+                    android:text="Đề xuất"
                     android:textColor="#FFFFFF"
-                    android:textSize="17sp"
+                    android:textSize="16.5sp"
                     android:textStyle="bold" />
 
                 <View
                     android:id="@+id/indicatorForYou"
                     android:layout_width="24dp"
-                    android:layout_height="2dp"
-                    android:layout_marginTop="4dp"
+                    android:layout_height="2.5dp"
+                    android:layout_marginTop="3dp"
                     android:background="#FFFFFF"
                     android:visibility="visible" />
             </LinearLayout>
+
         </LinearLayout>
 
         <!-- Nút Kính lúp Tìm kiếm -->
@@ -118,7 +149,7 @@
     <LinearLayout
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="50dp"
         android:layout_gravity="bottom"
         android:background="#000000"
         android:gravity="center_vertical"
@@ -149,9 +180,9 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Tab 2: Bạn bè -->
+        <!-- Tab 2: Cửa hàng -->
         <LinearLayout
-            android:id="@+id/navFriends"
+            android:id="@+id/navShop"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
@@ -161,19 +192,19 @@
             <ImageView
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:src="@drawable/ic_tiktok_friends"
-                android:contentDescription="Bạn bè" />
+                android:src="@drawable/ic_tiktok_shop"
+                android:contentDescription="Cửa hàng" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="Bạn bè"
+                android:text="Cửa hàng"
                 android:textColor="#88FFFFFF"
                 android:textSize="10sp" />
         </LinearLayout>
 
-        <!-- Tab 3: Tạo (+) -->
+        <!-- Tab 3: Nút Tạo (+) -->
         <LinearLayout
             android:id="@+id/navCreate"
             android:layout_width="0dp"
@@ -243,7 +274,7 @@
         android:layout_width="match_parent"
         android:layout_height="0.6dp"
         android:layout_gravity="bottom"
-        android:layout_marginBottom="52dp"
+        android:layout_marginBottom="50dp"
         android:background="#20FFFFFF" />
 
     <!-- 4. Vòng tròn tải dữ liệu ban đầu -->
@@ -275,7 +306,7 @@
             android:orientation="horizontal"
             android:paddingHorizontal="12dp"
             android:paddingTop="38dp"
-            android:paddingBottom="10dp">
+            android:paddingBottom="8dp">
 
             <ImageView
                 android:id="@+id/ivSearchBack"
@@ -288,7 +319,7 @@
             <!-- Khung nhập tìm kiếm bo tròn -->
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="40dp"
+                android:layout_height="38dp"
                 android:layout_marginHorizontal="10dp"
                 android:layout_weight="1"
                 android:background="#222332"
@@ -297,8 +328,8 @@
                 android:paddingHorizontal="10dp">
 
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
                     android:src="@drawable/ic_search"
                     android:contentDescription="Search" />
 
@@ -333,11 +364,54 @@
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="6dp"
                 android:paddingVertical="8dp"
-                android:text="Tìm"
+                android:text="Tìm kiếm"
                 android:textColor="#FE2C55"
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
+        </LinearLayout>
+
+        <!-- Các tab danh mục tìm kiếm: Top | Video | Âm thanh | Người dùng -->
+        <LinearLayout
+            android:id="@+id/layoutSearchCategoryTabs"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="20dp"
+                android:text="Top"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="20dp"
+                android:text="Video"
+                android:textColor="#88FFFFFF"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="20dp"
+                android:text="Âm thanh"
+                android:textColor="#88FFFFFF"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Người dùng"
+                android:textColor="#88FFFFFF"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <!-- Thẻ gợi ý từ khóa thịnh hành -->
@@ -377,8 +451,288 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:padding="6dp"
+            android:padding="4dp"
             android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- 6. MÀN HÌNH HỒ SƠ KÊNH TOÀN MÀN HÌNH CHUẨN TIKTOK 100% (Creator Profile Overlay) -->
+    <LinearLayout
+        android:id="@+id/layoutProfileOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#12131A"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- Top Bar Profile -->
+        <LinearLayout
+            android:id="@+id/profileTopBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            android:paddingTop="38dp"
+            android:paddingBottom="8dp">
+
+            <ImageView
+                android:id="@+id/ivProfileBack"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="4dp"
+                android:src="@drawable/ic_back_arrow"
+                android:contentDescription="Quay lại" />
+
+            <TextView
+                android:id="@+id/tvProfileTopTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="\@tiktok_vietnam"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/ivProfileShare"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:padding="4dp"
+                android:src="@drawable/ic_share"
+                android:contentDescription="Chia sẻ" />
+        </LinearLayout>
+
+        <!-- Header thông tin tác giả -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="12dp">
+
+            <!-- Avatar lớn -->
+            <ImageView
+                android:id="@+id/ivProfileAvatar"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
+                android:background="@drawable/bg_avatar_circle"
+                android:scaleType="centerCrop"
+                android:contentDescription="Avatar Profile" />
+
+            <TextView
+                android:id="@+id/tvProfileNickname"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Tên Tác Giả"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvProfileHandle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="\@unique_id"
+                android:textColor="#88FFFFFF"
+                android:textSize="13sp" />
+
+            <!-- 3 Cột thống kê: Đang follow | Follower | Thích -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvProfileFollowingCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="142"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Đang follow"
+                        android:textColor="#88FFFFFF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="20dp"
+                    android:background="#20FFFFFF" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvProfileFollowersCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="254.8K"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Follower"
+                        android:textColor="#88FFFFFF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="20dp"
+                    android:background="#20FFFFFF" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvProfileLikesCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="3.8M"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Thích"
+                        android:textColor="#88FFFFFF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Hàng nút: Follow (Đỏ) | Nhắn tin -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnProfileFollow"
+                    android:layout_width="140dp"
+                    android:layout_height="40dp"
+                    android:backgroundTint="#FE2C55"
+                    android:text="Follow"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnProfileMessage"
+                    android:layout_width="140dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:backgroundTint="#262738"
+                    android:text="Nhắn tin"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Tiểu sử (Bio) -->
+            <TextView
+                android:id="@+id/tvProfileBio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="Âm nhạc &amp; Video thư giãn mỗi ngày ✨ Liên hệ hợp tác qua bio"
+                android:textColor="#CCCCCC"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+
+        <!-- Tab biểu tượng Video (3 vạch gạch ngang) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:background="#161722"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▶ Video"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="40dp"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="4dp"
+                    android:background="#FFFFFF" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒 Đã thích"
+                    android:textColor="#66FFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Lưới Video của Kênh: 3 Cột chuẩn TikTok -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvProfileVideos"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#0D0E15"
+            android:padding="2dp" />
 
     </LinearLayout>
 

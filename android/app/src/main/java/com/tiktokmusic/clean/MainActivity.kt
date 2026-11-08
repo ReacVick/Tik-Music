@@ -29,6 +29,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
@@ -43,7 +44,6 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -72,35 +72,57 @@ class MainActivity : AppCompatActivity() {
     private lateinit var repository: TikTokRepository
     private lateinit var initProgress: ProgressBar
 
-    // Top Bar UI
+    // Top Bar UI (Bạn bè | Đã follow | Đề xuất)
     private lateinit var topBar: LinearLayout
     private lateinit var btnToggleAutoScroll: TextView
     private lateinit var btnSearch: ImageView
+    private lateinit var tvTabFriends: TextView
     private lateinit var tvTabFollowing: TextView
     private lateinit var tvTabForYou: TextView
+    private lateinit var indicatorFriends: View
     private lateinit var indicatorFollowing: View
     private lateinit var indicatorForYou: View
 
-    // Bottom Navigation Bar UI
+    // Bottom Navigation Bar UI (5 Tabs chuẩn TikTok)
     private lateinit var navHome: View
-    private lateinit var navFriends: View
+    private lateinit var navShop: View
     private lateinit var navCreate: View
     private lateinit var navInbox: View
     private lateinit var navProfile: View
 
     // Search Overlay UI
     private lateinit var layoutSearchOverlay: View
+    private lateinit var searchTopBar: LinearLayout
     private lateinit var ivSearchBack: ImageView
     private lateinit var etSearchInput: EditText
     private lateinit var ivSearchClear: ImageView
     private lateinit var btnSubmitSearch: TextView
+    private lateinit var layoutSearchCategoryTabs: View
     private lateinit var scrollSearchSuggestions: View
     private lateinit var listHotKeywords: LinearLayout
     private lateinit var rvSearchResults: RecyclerView
 
+    // Creator Profile Overlay UI (Trang Hồ Sơ Kênh 1:1 TikTok)
+    private lateinit var layoutProfileOverlay: View
+    private lateinit var profileTopBar: LinearLayout
+    private lateinit var ivProfileBack: ImageView
+    private lateinit var tvProfileTopTitle: TextView
+    private lateinit var ivProfileShare: ImageView
+    private lateinit var ivProfileAvatar: ImageView
+    private lateinit var tvProfileNickname: TextView
+    private lateinit var tvProfileHandle: TextView
+    private lateinit var tvProfileFollowingCount: TextView
+    private lateinit var tvProfileFollowersCount: TextView
+    private lateinit var tvProfileLikesCount: TextView
+    private lateinit var btnProfileFollow: Button
+    private lateinit var btnProfileMessage: Button
+    private lateinit var tvProfileBio: TextView
+    private lateinit var rvProfileVideos: RecyclerView
+
     private lateinit var prefs: SharedPreferences
     private val videoList = mutableListOf<TikTokItem>()
     private val searchResultsList = mutableListOf<TikTokItem>()
+    private val profileVideosList = mutableListOf<TikTokItem>()
 
     private var exoPlayer: ExoPlayer? = null
     private var currentPosition: Int = 0
@@ -108,14 +130,20 @@ class MainActivity : AppCompatActivity() {
     private var isLoadingMore: Boolean = false
     private var currentTab: String = "FOR_YOU"
 
+    // SỬA LỖI 1: Cờ phân biệt người dùng tự bấm dừng thủ công
+    private var isManuallyPaused: Boolean = false
+
     private var videoStartTime: Long = 0L
     private val progressHandler = Handler(Looper.getMainLooper())
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // Khi màn hình tắt khóa máy: Giữ âm thanh tiếp tục phát 100%
+            // Khi màn hình tắt: Nếu người dùng ĐANG XEM thì duy trì phát ngầm;
+            // Nếu người dùng ĐÃ BẤM DỪNG THỦ CÔNG -> TUYỆT ĐỐI KHÔNG TỰ CHẠY LẠI!
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                exoPlayer?.playWhenReady = true
+                if (!isManuallyPaused && exoPlayer?.playbackState != Player.STATE_ENDED) {
+                    exoPlayer?.playWhenReady = true
+                }
             }
         }
     }
@@ -127,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         // Tràn viền giao diện tối 120Hz mượt mà
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.parseColor("#0A0A0E")
+        window.navigationBarColor = Color.parseColor("#000000")
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_main)
@@ -141,6 +169,8 @@ class MainActivity : AppCompatActivity() {
         setupTopTabs()
         setupBottomNav()
         setupSearchOverlay()
+        setupProfileOverlay()
+        setupBackHandler()
         checkNotificationPermission()
 
         repository = TikTokRepository()
@@ -160,46 +190,57 @@ class MainActivity : AppCompatActivity() {
         topBar = findViewById(R.id.topBar)
         btnToggleAutoScroll = findViewById(R.id.btnToggleAutoScroll)
         btnSearch = findViewById(R.id.btnSearch)
+
+        tvTabFriends = findViewById(R.id.tvTabFriends)
         tvTabFollowing = findViewById(R.id.tvTabFollowing)
         tvTabForYou = findViewById(R.id.tvTabForYou)
+        indicatorFriends = findViewById(R.id.indicatorFriends)
         indicatorFollowing = findViewById(R.id.indicatorFollowing)
         indicatorForYou = findViewById(R.id.indicatorForYou)
 
         navHome = findViewById(R.id.navHome)
-        navFriends = findViewById(R.id.navFriends)
+        navShop = findViewById(R.id.navShop)
         navCreate = findViewById(R.id.navCreate)
         navInbox = findViewById(R.id.navInbox)
         navProfile = findViewById(R.id.navProfile)
 
+        // Search Overlay
         layoutSearchOverlay = findViewById(R.id.layoutSearchOverlay)
+        searchTopBar = findViewById(R.id.searchTopBar)
         ivSearchBack = findViewById(R.id.ivSearchBack)
         etSearchInput = findViewById(R.id.etSearchInput)
         ivSearchClear = findViewById(R.id.ivSearchClear)
         btnSubmitSearch = findViewById(R.id.btnSubmitSearch)
+        layoutSearchCategoryTabs = findViewById(R.id.layoutSearchCategoryTabs)
         scrollSearchSuggestions = findViewById(R.id.scrollSearchSuggestions)
         listHotKeywords = findViewById(R.id.listHotKeywords)
         rvSearchResults = findViewById(R.id.rvSearchResults)
+
+        // Profile Overlay
+        layoutProfileOverlay = findViewById(R.id.layoutProfileOverlay)
+        profileTopBar = findViewById(R.id.profileTopBar)
+        ivProfileBack = findViewById(R.id.ivProfileBack)
+        tvProfileTopTitle = findViewById(R.id.tvProfileTopTitle)
+        ivProfileShare = findViewById(R.id.ivProfileShare)
+        ivProfileAvatar = findViewById(R.id.ivProfileAvatar)
+        tvProfileNickname = findViewById(R.id.tvProfileNickname)
+        tvProfileHandle = findViewById(R.id.tvProfileHandle)
+        tvProfileFollowingCount = findViewById(R.id.tvProfileFollowingCount)
+        tvProfileFollowersCount = findViewById(R.id.tvProfileFollowersCount)
+        tvProfileLikesCount = findViewById(R.id.tvProfileLikesCount)
+        btnProfileFollow = findViewById(R.id.btnProfileFollow)
+        btnProfileMessage = findViewById(R.id.btnProfileMessage)
+        tvProfileBio = findViewById(R.id.tvProfileBio)
+        rvProfileVideos = findViewById(R.id.rvProfileVideos)
     }
 
     private fun setupWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootContainer)) { _, insets ->
             val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            val navBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
 
-            // Tự động căn lề theo tai thỏ/nốt ruồi Vivo OriginOS 6 mà không bị đè
-            topBar.setPadding(
-                topBar.paddingLeft,
-                statusBarTop + 8,
-                topBar.paddingRight,
-                topBar.paddingBottom
-            )
-            val searchTopBar = findViewById<LinearLayout>(R.id.searchTopBar)
-            searchTopBar.setPadding(
-                searchTopBar.paddingLeft,
-                statusBarTop + 8,
-                searchTopBar.paddingRight,
-                searchTopBar.paddingBottom
-            )
+            topBar.setPadding(topBar.paddingLeft, statusBarTop + 6, topBar.paddingRight, topBar.paddingBottom)
+            searchTopBar.setPadding(searchTopBar.paddingLeft, statusBarTop + 6, searchTopBar.paddingRight, searchTopBar.paddingBottom)
+            profileTopBar.setPadding(profileTopBar.paddingLeft, statusBarTop + 6, profileTopBar.paddingRight, profileTopBar.paddingBottom)
             insets
         }
     }
@@ -211,9 +252,9 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("auto_scroll_enabled", isAutoScrollEnabled).apply()
             updateAutoScrollUI()
             val msg = if (isAutoScrollEnabled) {
-                "⚡ Đã BẬT tự động cuộn (hết video tự chuyển)"
+                "⚡ Đã BẬT tự động cuộn"
             } else {
-                "⚡ Đã TẮT tự động cuộn (lặp lại video)"
+                "⚡ Đã TẮT tự động cuộn"
             }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
@@ -221,23 +262,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateAutoScrollUI() {
         if (isAutoScrollEnabled) {
-            btnToggleAutoScroll.text = "⚡ Tự cuộn: BẬT"
+            btnToggleAutoScroll.text = "⚡ Tự cuộn"
             btnToggleAutoScroll.setBackgroundResource(R.drawable.bg_pill_autoscroll_on)
             btnToggleAutoScroll.setTextColor(Color.parseColor("#00E676"))
         } else {
-            btnToggleAutoScroll.text = "⚡ Tự cuộn: TẮT"
+            btnToggleAutoScroll.text = "⚡ Tự cuộn"
             btnToggleAutoScroll.setBackgroundResource(R.drawable.bg_pill_autoscroll_off)
             btnToggleAutoScroll.setTextColor(Color.parseColor("#88FFFFFF"))
         }
     }
 
     private fun setupTopTabs() {
+        findViewById<View>(R.id.tabFriendsLayout).setOnClickListener {
+            currentTab = "FRIENDS"
+            tvTabFriends.setTextColor(Color.WHITE)
+            indicatorFriends.visibility = View.VISIBLE
+
+            tvTabFollowing.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorFollowing.visibility = View.INVISIBLE
+            tvTabForYou.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorForYou.visibility = View.INVISIBLE
+
+            loadInitialFeed()
+        }
+
         findViewById<View>(R.id.tabFollowingLayout).setOnClickListener {
             currentTab = "FOLLOWING"
             tvTabFollowing.setTextColor(Color.WHITE)
             indicatorFollowing.visibility = View.VISIBLE
+
+            tvTabFriends.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorFriends.visibility = View.INVISIBLE
             tvTabForYou.setTextColor(Color.parseColor("#88FFFFFF"))
             indicatorForYou.visibility = View.INVISIBLE
+
             loadInitialFeed()
         }
 
@@ -245,28 +303,35 @@ class MainActivity : AppCompatActivity() {
             currentTab = "FOR_YOU"
             tvTabForYou.setTextColor(Color.WHITE)
             indicatorForYou.visibility = View.VISIBLE
+
+            tvTabFriends.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorFriends.visibility = View.INVISIBLE
             tvTabFollowing.setTextColor(Color.parseColor("#88FFFFFF"))
             indicatorFollowing.visibility = View.INVISIBLE
+
             loadInitialFeed()
         }
     }
 
     private fun setupBottomNav() {
         navHome.setOnClickListener {
-            viewPager.setCurrentItem(0, true)
-            loadInitialFeed()
+            if (viewPager.currentItem != 0) {
+                viewPager.setCurrentItem(0, true)
+            } else {
+                loadInitialFeed()
+            }
         }
 
-        navFriends.setOnClickListener {
-            Toast.makeText(this, "Bạn bè: Đang đồng bộ danh bạ", Toast.LENGTH_SHORT).show()
+        navShop.setOnClickListener {
+            Toast.makeText(this, "🛒 Cửa hàng: Đang cập nhật sản phẩm", Toast.LENGTH_SHORT).show()
         }
 
         navCreate.setOnClickListener {
-            Toast.makeText(this, "Tính năng tạo video TikTok", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "➕ Tính năng Tạo video TikTok", Toast.LENGTH_SHORT).show()
         }
 
         navInbox.setOnClickListener {
-            Toast.makeText(this, "Hộp thư: Không có tin nhắn mới", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "✉️ Hộp thư: Bạn không có thông báo mới", Toast.LENGTH_SHORT).show()
         }
 
         navProfile.setOnClickListener {
@@ -283,9 +348,8 @@ class MainActivity : AppCompatActivity() {
         val btnViewAuthor = dialogView.findViewById<TextView>(R.id.btnOptionViewAuthor)
         val btnCopyLink = dialogView.findViewById<TextView>(R.id.btnOptionCopyLink)
 
-        dialogView.findViewById<TextView>(android.R.id.text1)?.text = "Cài đặt TikTok Clean"
-        btnViewAuthor.text = "📱 Trạng thái Đảo Origin: Đang liên kết com.luna.music"
-        btnCopyLink.text = "🗑️ Xóa bộ nhớ đệm video (Giải phóng RAM)"
+        btnViewAuthor.text = "📱 Đảo Origin Vivo: Đang hoạt động (com.luna.music)"
+        btnCopyLink.text = "🗑️ Dọn dẹp bộ nhớ đệm video (RAM)"
 
         switchAutoScroll.isChecked = isAutoScrollEnabled
         switchAutoScroll.setOnCheckedChangeListener { _, isChecked ->
@@ -296,12 +360,15 @@ class MainActivity : AppCompatActivity() {
 
         btnCopyLink.setOnClickListener {
             dialog.dismiss()
-            Toast.makeText(this, "Đã dọn dẹp bộ nhớ đệm mượt mà!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã làm sạch bộ nhớ đệm mượt mà!", Toast.LENGTH_SHORT).show()
         }
 
         dialog.show()
     }
 
+    // ========================================================
+    // TÌM KIẾM TOÀN DIỆN ĐA NGUỒN (Search Engine Grid 2 Cột)
+    // ========================================================
     private fun setupSearchOverlay() {
         btnSearch.setOnClickListener {
             openSearchOverlay()
@@ -339,7 +406,7 @@ class MainActivity : AppCompatActivity() {
 
         populateHotKeywords()
 
-        // Cài đặt RecyclerView kết quả tìm kiếm (Grid 2 cột chuẩn TikTok)
+        // RecyclerView kết quả tìm kiếm (Grid 2 cột chuẩn TikTok)
         rvSearchResults.layoutManager = GridLayoutManager(this, 2)
         rvSearchResults.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -392,6 +459,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSearchSuggestions() {
         scrollSearchSuggestions.visibility = View.VISIBLE
         rvSearchResults.visibility = View.GONE
+        layoutSearchCategoryTabs.visibility = View.GONE
     }
 
     private fun populateHotKeywords() {
@@ -402,7 +470,7 @@ class MainActivity : AppCompatActivity() {
             "🌟 Sơn Tùng M-TP V-Pop",
             "💃 Biến hình TikTok Việt Nam",
             "🍲 Review ẩm thực Sài Gòn & Hà Nội",
-            "😂 Hài hước giải trí triệu view"
+            "😂 Hài hước triệu view Việt Nam"
         )
 
         listHotKeywords.removeAllViews()
@@ -442,6 +510,7 @@ class MainActivity : AppCompatActivity() {
                 rvSearchResults.adapter?.notifyDataSetChanged()
 
                 scrollSearchSuggestions.visibility = View.GONE
+                layoutSearchCategoryTabs.visibility = View.VISIBLE
                 rvSearchResults.visibility = View.VISIBLE
 
                 if (results.isEmpty()) {
@@ -451,71 +520,112 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAuthorProfileDialog(item: TikTokItem) {
-        val dialog = BottomSheetDialog(this)
-        val dialogView = layoutInflater.inflate(R.layout.dialog_author_profile, null)
-        dialog.setContentView(dialogView)
+    // ========================================================
+    // TRANG HỒ SƠ KÊNH 1:1 TIKTOK (Creator Profile 3 Cột)
+    // ========================================================
+    private fun setupProfileOverlay() {
+        ivProfileBack.setOnClickListener {
+            closeAuthorProfile()
+        }
 
-        val ivAvatar = dialogView.findViewById<ImageView>(R.id.ivDialogAuthorAvatar)
-        val tvNickname = dialogView.findViewById<TextView>(R.id.tvDialogAuthorNickname)
-        val tvHandle = dialogView.findViewById<TextView>(R.id.tvDialogAuthorHandle)
-        val btnFollow = dialogView.findViewById<Button>(R.id.btnDialogFollow)
-        val rvAuthorVideos = dialogView.findViewById<RecyclerView>(R.id.rvAuthorVideos)
-        val tvCount = dialogView.findViewById<TextView>(R.id.tvAuthorVideoCount)
+        ivProfileShare.setOnClickListener {
+            val handle = tvProfileHandle.text.toString()
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "Kênh TikTok $handle - Được phát trên TikTok Clean")
+            }
+            startActivity(Intent.createChooser(shareIntent, "Chia sẻ kênh"))
+        }
 
-        tvNickname.text = item.author
-        tvHandle.text = if (item.authorUniqueId.isNotEmpty()) "@${item.authorUniqueId}" else item.author
-        ImageLoader.load(item.authorAvatar, ivAvatar, true)
-
-        var isFollowing = false
-        btnFollow.setOnClickListener {
-            isFollowing = !isFollowing
-            if (isFollowing) {
-                btnFollow.text = "Đang theo dõi"
-                btnFollow.setBackgroundColor(Color.parseColor("#33FFFFFF"))
+        var isProfileFollowed = false
+        btnProfileFollow.setOnClickListener {
+            isProfileFollowed = !isProfileFollowed
+            if (isProfileFollowed) {
+                btnProfileFollow.text = "Đang follow"
+                btnProfileFollow.setBackgroundColor(Color.parseColor("#262738"))
             } else {
-                btnFollow.text = "+ Theo dõi"
-                btnFollow.setBackgroundColor(Color.parseColor("#FE2C55"))
+                btnProfileFollow.text = "Follow"
+                btnProfileFollow.setBackgroundColor(Color.parseColor("#FE2C55"))
             }
         }
 
-        val authorVideos = repository.getVideosByAuthor(item.authorUniqueId, item.author).ifEmpty {
-            listOf(item)
+        btnProfileMessage.setOnClickListener {
+            Toast.makeText(this, "Chức năng nhắn tin riêng tư", Toast.LENGTH_SHORT).show()
         }
-        tvCount.text = "Danh sách video của kênh (${authorVideos.size} video):"
 
-        rvAuthorVideos.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        rvAuthorVideos.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        // Lưới Video 3 Cột của Hồ sơ Kênh
+        rvProfileVideos.layoutManager = GridLayoutManager(this, 3)
+        rvProfileVideos.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-                val v = layoutInflater.inflate(R.layout.item_author_video_card, parent, false)
+                val v = layoutInflater.inflate(R.layout.item_profile_grid_video, parent, false)
                 return object : RecyclerView.ViewHolder(v) {}
             }
 
             override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-                val video = authorVideos[position]
-                val ivThumb = holder.itemView.findViewById<ImageView>(R.id.ivAuthorThumb)
-                val tvTitle = holder.itemView.findViewById<TextView>(R.id.tvAuthorVideoTitle)
+                val video = profileVideosList[position]
+                val ivThumb = holder.itemView.findViewById<ImageView>(R.id.ivProfileGridThumb)
+                val tvViews = holder.itemView.findViewById<TextView>(R.id.tvProfileGridViews)
 
-                tvTitle.text = video.title
+                tvViews.text = video.likeCount
                 ImageLoader.load(video.coverUrl, ivThumb, false)
 
                 holder.itemView.setOnClickListener {
-                    dialog.dismiss()
+                    closeAuthorProfile()
                     val targetIndex = videoList.indexOfFirst { it.id == video.id }
                     if (targetIndex >= 0) {
-                        viewPager.setCurrentItem(targetIndex, true)
+                        viewPager.setCurrentItem(targetIndex, false)
+                        playVideoAt(targetIndex)
                     } else {
                         videoList.add(currentPosition + 1, video)
                         adapter.notifyItemInserted(currentPosition + 1)
-                        viewPager.setCurrentItem(currentPosition + 1, true)
+                        viewPager.setCurrentItem(currentPosition + 1, false)
+                        playVideoAt(currentPosition + 1)
                     }
                 }
             }
 
-            override fun getItemCount(): Int = authorVideos.size
+            override fun getItemCount(): Int = profileVideosList.size
         }
+    }
 
-        dialog.show()
+    private fun openAuthorProfile(item: TikTokItem) {
+        val handle = if (item.authorUniqueId.isNotEmpty()) "@${item.authorUniqueId}" else item.author
+        tvProfileTopTitle.text = handle
+        tvProfileHandle.text = handle
+        tvProfileNickname.text = item.author
+        ImageLoader.load(item.authorAvatar, ivProfileAvatar, true)
+
+        // Tạo số liệu sống động chuẩn TikTok
+        tvProfileFollowingCount.text = "186"
+        tvProfileFollowersCount.text = item.likeCount
+        tvProfileLikesCount.text = "2.4M"
+        tvProfileBio.text = "${item.author} · Kênh chia sẻ âm nhạc & video xu hướng chính thức 🎧✨"
+
+        profileVideosList.clear()
+        val authorVideos = repository.getVideosByAuthor(item.authorUniqueId, item.author)
+        profileVideosList.addAll(authorVideos)
+        rvProfileVideos.adapter?.notifyDataSetChanged()
+
+        layoutProfileOverlay.visibility = View.VISIBLE
+    }
+
+    private fun closeAuthorProfile() {
+        layoutProfileOverlay.visibility = View.GONE
+    }
+
+    private fun setupBackHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (layoutProfileOverlay.visibility == View.VISIBLE) {
+                    closeAuthorProfile()
+                } else if (layoutSearchOverlay.visibility == View.VISIBLE) {
+                    closeSearchOverlay()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
 
     private fun showOptionsMenu(item: TikTokItem) {
@@ -536,7 +646,7 @@ class MainActivity : AppCompatActivity() {
 
         btnViewAuthor.setOnClickListener {
             dialog.dismiss()
-            showAuthorProfileDialog(item)
+            openAuthorProfile(item)
         }
 
         btnCopyLink.setOnClickListener {
@@ -586,7 +696,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initExoPlayer() {
-        // TỐI ƯU HÓA TỐC ĐỘ NẠP VIDEO CHUẨN TIKTOK (LoadControl cực nhanh: 250ms là phát ngay!)
+        // TỐI ƯU HÓA TỐC ĐỘ NẠP VIDEO CHUẨN TIKTOK (Buffer 250ms là phát ngay lập tức)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 1000, // minBufferMs: 1.0s
@@ -624,7 +734,6 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        // Nếu gặp video lỗi link CDN, tự động chuyển ngay sang bài tiếp theo sau 500ms
                         viewPager.postDelayed({
                             playNextVideo()
                         }, 500)
@@ -657,7 +766,7 @@ class MainActivity : AppCompatActivity() {
                 }
             },
             onAuthorClick = { item ->
-                showAuthorProfileDialog(item)
+                openAuthorProfile(item)
             },
             onLongClick = { item ->
                 showOptionsMenu(item)
@@ -680,7 +789,6 @@ class MainActivity : AppCompatActivity() {
                 recordWatchInteraction()
                 playVideoAt(position)
 
-                // CUỘN VÔ TẬN: Khi còn 4 video là đến đáy, tự động nạp tiếp 20 video mới
                 if (position >= videoList.size - 4) {
                     loadMoreVideos()
                 }
@@ -694,6 +802,7 @@ class MainActivity : AppCompatActivity() {
         if (position < 0 || position >= videoList.size) return
         currentPosition = position
         videoStartTime = System.currentTimeMillis()
+        isManuallyPaused = false
 
         val item = videoList[position]
         exoPlayer?.stop()
@@ -735,6 +844,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeCurrentVideo() {
+        isManuallyPaused = false
         exoPlayer?.play()
         getCurrentViewHolder()?.ivCenterPlay?.visibility = View.GONE
         getCurrentViewHolder()?.discAnimator?.resume()
@@ -742,6 +852,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pauseCurrentVideo() {
+        isManuallyPaused = true
         exoPlayer?.pause()
         getCurrentViewHolder()?.ivCenterPlay?.visibility = View.VISIBLE
         getCurrentViewHolder()?.discAnimator?.pause()
@@ -805,14 +916,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (exoPlayer?.playbackState == Player.STATE_READY) {
+        // Chỉ tự động phát lại khi người dùng KHÔNG bấm dừng thủ công
+        if (!isManuallyPaused && exoPlayer?.playbackState == Player.STATE_READY) {
             exoPlayer?.play()
         }
     }
 
     override fun onStop() {
         super.onStop()
-        // Khi màn hình tắt: VẪN TIẾP TỤC PHÁT (OriginMediaService bảo vệ âm thanh)
         if (isFinishing) {
             exoPlayer?.pause()
         }
