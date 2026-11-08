@@ -37,9 +37,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -121,8 +123,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var prefs: SharedPreferences
     private val videoList = mutableListOf<TikTokItem>()
+    private val homeVideoList = mutableListOf<TikTokItem>()
     private val searchResultsList = mutableListOf<TikTokItem>()
     private val profileVideosList = mutableListOf<TikTokItem>()
+
+    private var isShowingSearchResults: Boolean = false
+    private var lastHomePosition: Int = 0
 
     private var exoPlayer: ExoPlayer? = null
     private var currentPosition: Int = 0
@@ -319,10 +325,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBottomNav() {
         navHome.setOnClickListener {
-            if (viewPager.currentItem != 0) {
-                viewPager.setCurrentItem(0, true)
+            if (isShowingSearchResults) {
+                // Quay về bảng tin Trang chủ từ kết quả tìm kiếm
+                isShowingSearchResults = false
+                videoList.clear()
+                videoList.addAll(homeVideoList)
+                adapter.notifyDataSetChanged()
+                val targetPos = lastHomePosition.coerceIn(0, (videoList.size - 1).coerceAtLeast(0))
+                viewPager.setCurrentItem(targetPos, false)
+                playVideoAt(targetPos)
             } else {
-                loadInitialFeed()
+                if (viewPager.currentItem != 0) {
+                    viewPager.setCurrentItem(0, true)
+                } else {
+                    loadInitialFeed()
+                }
             }
         }
 
@@ -433,6 +450,10 @@ class MainActivity : AppCompatActivity() {
                 ImageLoader.load(item.authorAvatar, ivAvatar, true)
 
                 holder.itemView.setOnClickListener {
+                    if (!isShowingSearchResults) {
+                        lastHomePosition = currentPosition
+                    }
+                    isShowingSearchResults = true
                     closeSearchOverlay()
                     videoList.clear()
                     videoList.addAll(searchResultsList)
@@ -458,6 +479,9 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(etSearchInput.windowToken, 0)
         layoutSearchOverlay.visibility = View.GONE
+        if (!isManuallyPaused && exoPlayer?.playbackState == Player.STATE_READY && exoPlayer?.isPlaying == false) {
+            exoPlayer?.play()
+        }
     }
 
     private fun showSearchSuggestions() {
@@ -615,6 +639,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun closeAuthorProfile() {
         layoutProfileOverlay.visibility = View.GONE
+        if (!isManuallyPaused && exoPlayer?.playbackState == Player.STATE_READY && exoPlayer?.isPlaying == false) {
+            exoPlayer?.play()
+        }
     }
 
     private fun setupBackHandler() {
@@ -624,6 +651,15 @@ class MainActivity : AppCompatActivity() {
                     closeAuthorProfile()
                 } else if (layoutSearchOverlay.visibility == View.VISIBLE) {
                     closeSearchOverlay()
+                } else if (isShowingSearchResults) {
+                    // Trở về bảng tin Trang chủ từ kết quả tìm kiếm
+                    isShowingSearchResults = false
+                    videoList.clear()
+                    videoList.addAll(homeVideoList)
+                    adapter.notifyDataSetChanged()
+                    val targetPos = lastHomePosition.coerceIn(0, (videoList.size - 1).coerceAtLeast(0))
+                    viewPager.setCurrentItem(targetPos, false)
+                    playVideoAt(targetPos)
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -670,11 +706,15 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 initProgress.visibility = View.GONE
                 if (items.isNotEmpty()) {
-                    videoList.clear()
-                    videoList.addAll(items)
-                    adapter.notifyDataSetChanged()
-                    viewPager.post {
-                        playVideoAt(0)
+                    homeVideoList.clear()
+                    homeVideoList.addAll(items)
+                    if (!isShowingSearchResults) {
+                        videoList.clear()
+                        videoList.addAll(items)
+                        adapter.notifyDataSetChanged()
+                        viewPager.post {
+                            playVideoAt(0)
+                        }
                     }
                 } else {
                     Toast.makeText(this, "Đang kết nối máy chủ...", Toast.LENGTH_SHORT).show()
@@ -684,16 +724,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadMoreVideos() {
-        if (isLoadingMore) return
+        if (isLoadingMore || isShowingSearchResults) return
         isLoadingMore = true
 
         repository.fetchVietnameseFeed(20) { moreItems ->
             runOnUiThread {
                 isLoadingMore = false
                 if (moreItems.isNotEmpty()) {
-                    val start = videoList.size
-                    videoList.addAll(moreItems)
-                    adapter.notifyItemRangeInserted(start, moreItems.size)
+                    homeVideoList.addAll(moreItems)
+                    if (!isShowingSearchResults) {
+                        val start = videoList.size
+                        videoList.addAll(moreItems)
+                        adapter.notifyItemRangeInserted(start, moreItems.size)
+                    }
                 }
             }
         }
@@ -718,11 +761,28 @@ class MainActivity : AppCompatActivity() {
 
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
-                        // CHỈ ẨN THUMBNAIL KHI KHUNG HÌNH VIDEO THỰC SỰ ĐƯỢC GIẢI MÃ VÀ HIỂN THỊ!
-                        // ĐỐI VỚI BÀI ĐĂNG ALBUM ẢNH / AUDIO ONLY: THUMBNAIL KHÔNG BỊ ẨN -> TRIỆT TIÊU LỖI MẤT HÌNH
-                        val curPos = this@MainActivity.currentPosition
-                        if (curPos in videoList.indices && !videoList[curPos].isPhotoPost) {
-                            getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
+                        runOnUiThread {
+                            val curPos = this@MainActivity.currentPosition
+                            if (curPos in videoList.indices && !videoList[curPos].isPhotoPost) {
+                                getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
+                            }
+                        }
+                    }
+
+                    override fun onTracksChanged(tracks: Tracks) {
+                        var hasVideo = false
+                        for (group in tracks.groups) {
+                            if (group.type == C.TRACK_TYPE_VIDEO && group.isSelected) {
+                                hasVideo = true
+                                break
+                            }
+                        }
+                        runOnUiThread {
+                            val curPos = this@MainActivity.currentPosition
+                            if (!hasVideo && curPos in videoList.indices) {
+                                // Luồng âm thanh thuần (không có hình): hiển thị thumbnail để không bị màn đen
+                                getCurrentViewHolder()?.ivThumbnail?.visibility = View.VISIBLE
+                            }
                         }
                     }
 
@@ -797,6 +857,7 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent.createChooser(shareIntent, "Chia sẻ video"))
             }
         )
+        adapter.exoPlayer = exoPlayer
 
         viewPager.adapter = adapter
         viewPager.offscreenPageLimit = 1
@@ -805,10 +866,21 @@ class MainActivity : AppCompatActivity() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
                 recordWatchInteraction()
+                adapter.currentPlayingPosition = position
                 playVideoAt(position)
 
-                if (position >= videoList.size - 4) {
+                if (!isShowingSearchResults && position >= videoList.size - 4) {
                     loadMoreVideos()
+                }
+            }
+
+            override fun onPageScrollStateChanged(state: Int) {
+                super.onPageScrollStateChanged(state)
+                if (state == ViewPager2.SCROLL_STATE_IDLE) {
+                    val holder = getCurrentViewHolder()
+                    if (holder != null && holder.playerView.player != exoPlayer) {
+                        holder.playerView.player = exoPlayer
+                    }
                 }
             }
         })
@@ -822,6 +894,9 @@ class MainActivity : AppCompatActivity() {
         videoStartTime = System.currentTimeMillis()
         isManuallyPaused = false
 
+        adapter.currentPlayingPosition = position
+        adapter.exoPlayer = exoPlayer
+
         // Dừng trình chiếu ảnh của video trước (nếu có)
         photoSlideRunnable?.let { progressHandler.removeCallbacks(it) }
         currentSlideIndex = 0
@@ -833,7 +908,7 @@ class MainActivity : AppCompatActivity() {
         viewPager.post {
             val holder = getCurrentViewHolder()
             if (holder != null) {
-                PlayerView.switchTargetView(exoPlayer!!, null, holder.playerView)
+                holder.playerView.player = exoPlayer
                 // Luôn hiển thị thumbnail ảnh bìa trước khi phát để không bị đen màn hình
                 holder.ivThumbnail.visibility = View.VISIBLE
                 holder.ivCenterPlay.visibility = View.GONE

@@ -11,6 +11,7 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.RecyclerView
 
@@ -21,6 +22,9 @@ class TikTokVideoAdapter(
     private val onLongClick: (item: TikTokItem) -> Unit,
     private val onShareClick: (item: TikTokItem) -> Unit
 ) : RecyclerView.Adapter<TikTokVideoAdapter.VideoViewHolder>() {
+
+    var exoPlayer: ExoPlayer? = null
+    var currentPlayingPosition: Int = -1
 
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val playerView: PlayerView = itemView.findViewById(R.id.playerView)
@@ -67,6 +71,15 @@ class TikTokVideoAdapter(
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
         val item = items[position]
+
+        // Gắn ExoPlayer ngay khi ViewHolder được bind nếu là vị trí đang phát
+        if (position == currentPlayingPosition && exoPlayer != null) {
+            holder.playerView.player = exoPlayer
+        } else {
+            if (holder.playerView.player != null) {
+                holder.playerView.player = null
+            }
+        }
 
         holder.tvAuthorName.text = item.author
         holder.tvCaption.text = item.title
@@ -165,6 +178,22 @@ class TikTokVideoAdapter(
         holder.itemView.setOnLongClickListener {
             onLongClick(item)
             true
+        }
+    }
+
+    override fun onViewAttachedToWindow(holder: VideoViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        val pos = holder.bindingAdapterPosition
+        if (pos == currentPlayingPosition && exoPlayer != null) {
+            holder.playerView.player = exoPlayer
+        }
+    }
+
+    override fun onViewDetachedFromWindow(holder: VideoViewHolder) {
+        super.onViewDetachedFromWindow(holder)
+        val pos = holder.bindingAdapterPosition
+        if (pos != currentPlayingPosition && holder.playerView.player != null) {
+            holder.playerView.player = null
         }
     }
 
