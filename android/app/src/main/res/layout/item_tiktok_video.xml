@@ -5,6 +5,16 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
+    <!-- 0. Lớp Ambient Mode phản chiếu dải màu video mềm mại (Ambient Lighting Effect) -->
+    <ImageView
+        android:id="@+id/ivAmbientGlow"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0.45"
+        android:visibility="gone"
+        android:contentDescription="Ambient Glow" />
+
     <!-- 1. Bộ giải mã video Google ExoPlayer (Media3 TextureView chuẩn ViewPager2 chống mất hình) -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
@@ -21,6 +31,42 @@
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
         android:contentDescription="Video Thumbnail" />
+
+    <!-- Lớp cảm ứng cử chỉ video (Play/Pause, Chạm kép thả tim) không đè lên thanh công cụ phải -->
+    <View
+        android:id="@+id/touchOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Nút "Toàn màn hình" chuẩn TikTok khi phát video tỷ lệ 16:9 ngang -->
+    <LinearLayout
+        android:id="@+id/layoutWidescreenPill"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="center"
+        android:layout_marginTop="160dp"
+        android:background="@drawable/bg_sheet_rounded"
+        android:backgroundTint="#88000000"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="16dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_fullscreen_rotate"
+            app:tint="#FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="Toàn màn hình"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <!-- Lớp chứa hoạt họa thả tim kép bùng nổ chuẩn TikTok (Double tap heart container) -->
     <FrameLayout

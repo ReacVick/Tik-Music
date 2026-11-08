@@ -24,7 +24,8 @@ class TikTokVideoAdapter(
     private val onLongClick: (item: TikTokItem) -> Unit,
     private val onShareClick: (item: TikTokItem) -> Unit,
     private val onCommentClick: (item: TikTokItem) -> Unit,
-    private val onDoubleTapLike: (item: TikTokItem) -> Unit
+    private val onDoubleTapLike: (item: TikTokItem) -> Unit,
+    private val onFullscreenClick: (item: TikTokItem) -> Unit
 ) : RecyclerView.Adapter<TikTokVideoAdapter.VideoViewHolder>() {
 
     var exoPlayer: ExoPlayer? = null
@@ -32,7 +33,10 @@ class TikTokVideoAdapter(
 
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val playerView: PlayerView = itemView.findViewById(R.id.playerView)
+        val ivAmbientGlow: ImageView = itemView.findViewById(R.id.ivAmbientGlow)
         val ivThumbnail: ImageView = itemView.findViewById(R.id.ivThumbnail)
+        val touchOverlay: View = itemView.findViewById(R.id.touchOverlay)
+        val layoutWidescreenPill: View = itemView.findViewById(R.id.layoutWidescreenPill)
         val heartAnimationContainer: FrameLayout = itemView.findViewById(R.id.heartAnimationContainer)
         val ivCenterPlay: ImageView = itemView.findViewById(R.id.ivCenterPlay)
 
@@ -199,9 +203,15 @@ class TikTokVideoAdapter(
             }
         })
 
-        holder.itemView.setOnTouchListener { _, event ->
+        // Gắn cử chỉ vào touchOverlay nằm phía sau các nút công cụ để không làm liệt nút tác giả / tim / bình luận
+        holder.touchOverlay.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             true
+        }
+
+        // Bấm nút "Toàn màn hình" (video 16:9)
+        holder.layoutWidescreenPill.setOnClickListener {
+            onFullscreenClick(item)
         }
     }
 

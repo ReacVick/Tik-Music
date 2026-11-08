@@ -736,4 +736,117 @@
 
     </LinearLayout>
 
+    <!-- 7. THANH TIÊU ĐỀ TRÊN KHI XEM VIDEO TỪ TÌM KIẾM (Search Watching Top Bar 1:1 TikTok) -->
+    <LinearLayout
+        android:id="@+id/layoutSearchWatchingTopBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="36dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/ivSearchWatchingBack"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
+            android:src="@drawable/ic_back_arrow"
+            android:contentDescription="Quay lại tìm kiếm" />
+
+        <LinearLayout
+            android:id="@+id/btnSearchWatchingQueryBox"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_search_box"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@drawable/ic_search"
+                android:contentDescription="Search Icon" />
+
+            <TextView
+                android:id="@+id/tvSearchWatchingQuery"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="tiktok music"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvSearchWatchingSubmit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="6dp"
+            android:text="Tìm kiếm"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 8. THANH BÌNH LUẬN DƯỚI CÙNG KHI XEM VIDEO TỪ TÌM KIẾM (Search Watching Bottom Bar 1:1 TikTok) -->
+    <LinearLayout
+        android:id="@+id/layoutSearchWatchingBottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom"
+        android:background="#101118"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:visibility="gone">
+
+        <!-- Ô nhập "Thêm bình luận..." -->
+        <LinearLayout
+            android:id="@+id/btnSearchWatchingCommentInput"
+            android:layout_width="0dp"
+            android:layout_height="38dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_search_box"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Thêm bình luận..."
+                android:textColor="#88FFFFFF"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/ivSearchWatchingCommentIcon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="12dp"
+            android:padding="6dp"
+            android:src="@drawable/ic_tiktok_comment"
+            android:contentDescription="Bình luận" />
+
+        <ImageView
+            android:id="@+id/ivSearchWatchingShareIcon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="8dp"
+            android:padding="6dp"
+            android:src="@drawable/ic_share"
+            android:contentDescription="Chia sẻ" />
+    </LinearLayout>
+
 </FrameLayout>

@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -45,8 +46,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -90,6 +93,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var indicatorForYou: View
 
     // Bottom Navigation Bar UI (5 Tabs chuẩn TikTok)
+    private lateinit var bottomNav: View
     private lateinit var navHome: View
     private lateinit var navShop: View
     private lateinit var navCreate: View
@@ -107,6 +111,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var scrollSearchSuggestions: View
     private lateinit var listHotKeywords: LinearLayout
     private lateinit var rvSearchResults: RecyclerView
+
+    // Search Watching UI (1:1 TikTok xem video từ kết quả tìm kiếm)
+    private lateinit var layoutSearchWatchingTopBar: View
+    private lateinit var ivSearchWatchingBack: ImageView
+    private lateinit var btnSearchWatchingQueryBox: View
+    private lateinit var tvSearchWatchingQuery: TextView
+    private lateinit var tvSearchWatchingSubmit: TextView
+    private lateinit var layoutSearchWatchingBottomBar: View
+    private lateinit var btnSearchWatchingCommentInput: View
+    private lateinit var ivSearchWatchingCommentIcon: ImageView
+    private lateinit var ivSearchWatchingShareIcon: ImageView
+    private var isWatchingFromSearch: Boolean = false
+    private var currentSearchQuery: String = ""
+    private var isLandscapeFullscreen: Boolean = false
 
     // Creator Profile Overlay UI (Trang Hồ Sơ Kênh 1:1 TikTok)
     private lateinit var layoutProfileOverlay: View
@@ -212,6 +230,7 @@ class MainActivity : AppCompatActivity() {
         indicatorFollowing = findViewById(R.id.indicatorFollowing)
         indicatorForYou = findViewById(R.id.indicatorForYou)
 
+        bottomNav = findViewById(R.id.bottomNav)
         navHome = findViewById(R.id.navHome)
         navShop = findViewById(R.id.navShop)
         navCreate = findViewById(R.id.navCreate)
@@ -229,6 +248,17 @@ class MainActivity : AppCompatActivity() {
         scrollSearchSuggestions = findViewById(R.id.scrollSearchSuggestions)
         listHotKeywords = findViewById(R.id.listHotKeywords)
         rvSearchResults = findViewById(R.id.rvSearchResults)
+
+        // Search Watching UI (1:1 TikTok xem video từ kết quả tìm kiếm)
+        layoutSearchWatchingTopBar = findViewById(R.id.layoutSearchWatchingTopBar)
+        ivSearchWatchingBack = findViewById(R.id.ivSearchWatchingBack)
+        btnSearchWatchingQueryBox = findViewById(R.id.btnSearchWatchingQueryBox)
+        tvSearchWatchingQuery = findViewById(R.id.tvSearchWatchingQuery)
+        tvSearchWatchingSubmit = findViewById(R.id.tvSearchWatchingSubmit)
+        layoutSearchWatchingBottomBar = findViewById(R.id.layoutSearchWatchingBottomBar)
+        btnSearchWatchingCommentInput = findViewById(R.id.btnSearchWatchingCommentInput)
+        ivSearchWatchingCommentIcon = findViewById(R.id.ivSearchWatchingCommentIcon)
+        ivSearchWatchingShareIcon = findViewById(R.id.ivSearchWatchingShareIcon)
 
         // Profile Overlay
         layoutProfileOverlay = findViewById(R.id.layoutProfileOverlay)
@@ -251,10 +281,25 @@ class MainActivity : AppCompatActivity() {
     private fun setupWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootContainer)) { _, insets ->
             val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val navBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
 
             topBar.setPadding(topBar.paddingLeft, statusBarTop + 6, topBar.paddingRight, topBar.paddingBottom)
             searchTopBar.setPadding(searchTopBar.paddingLeft, statusBarTop + 6, searchTopBar.paddingRight, searchTopBar.paddingBottom)
             profileTopBar.setPadding(profileTopBar.paddingLeft, statusBarTop + 6, profileTopBar.paddingRight, profileTopBar.paddingBottom)
+            layoutSearchWatchingTopBar.setPadding(
+                layoutSearchWatchingTopBar.paddingLeft,
+                statusBarTop + 6,
+                layoutSearchWatchingTopBar.paddingRight,
+                layoutSearchWatchingTopBar.paddingBottom
+            )
+            if (navBarBottom > 0) {
+                layoutSearchWatchingBottomBar.setPadding(
+                    layoutSearchWatchingBottomBar.paddingLeft,
+                    layoutSearchWatchingBottomBar.paddingTop,
+                    layoutSearchWatchingBottomBar.paddingRight,
+                    navBarBottom + 4
+                )
+            }
             insets
         }
     }
@@ -454,21 +499,96 @@ class MainActivity : AppCompatActivity() {
                 ImageLoader.load(item.authorAvatar, ivAvatar, true)
 
                 holder.itemView.setOnClickListener {
-                    if (!isShowingSearchResults) {
-                        lastHomePosition = currentPosition
-                    }
-                    isShowingSearchResults = true
-                    closeSearchOverlay()
-                    videoList.clear()
-                    videoList.addAll(searchResultsList)
-                    adapter.notifyDataSetChanged()
-                    viewPager.setCurrentItem(position, false)
-                    playVideoAt(position)
+                    val q = etSearchInput.text.toString().trim().ifEmpty { "TikTok Video" }
+                    enterSearchWatchingMode(q, position)
                 }
             }
 
             override fun getItemCount(): Int = searchResultsList.size
         }
+
+        // Tương tác thanh Search Watching (1:1 TikTok xem video từ kết quả tìm kiếm)
+        ivSearchWatchingBack.setOnClickListener {
+            exitSearchWatchingMode()
+        }
+
+        btnSearchWatchingQueryBox.setOnClickListener {
+            exitSearchWatchingMode()
+            etSearchInput.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(etSearchInput, InputMethodManager.SHOW_IMPLICIT)
+        }
+
+        tvSearchWatchingSubmit.setOnClickListener {
+            exitSearchWatchingMode()
+            etSearchInput.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(etSearchInput, InputMethodManager.SHOW_IMPLICIT)
+        }
+
+        btnSearchWatchingCommentInput.setOnClickListener {
+            if (currentPosition in videoList.indices) {
+                showCommentsBottomSheet(videoList[currentPosition])
+            }
+        }
+
+        ivSearchWatchingCommentIcon.setOnClickListener {
+            if (currentPosition in videoList.indices) {
+                showCommentsBottomSheet(videoList[currentPosition])
+            }
+        }
+
+        ivSearchWatchingShareIcon.setOnClickListener {
+            if (currentPosition in videoList.indices) {
+                showShareBottomSheet(videoList[currentPosition])
+            }
+        }
+    }
+
+    private fun enterSearchWatchingMode(query: String, startPosition: Int) {
+        if (!isShowingSearchResults) {
+            lastHomePosition = currentPosition
+        }
+        isShowingSearchResults = true
+        isWatchingFromSearch = true
+        currentSearchQuery = query
+
+        // Ẩn bàn phím và bảng overlay tìm kiếm
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(etSearchInput.windowToken, 0)
+        layoutSearchOverlay.visibility = View.GONE
+
+        // Ẩn Top Bar & Bottom Nav của Home
+        topBar.visibility = View.GONE
+        bottomNav.visibility = View.GONE
+
+        // Hiển thị thanh Search Watching chuẩn 1:1 TikTok
+        layoutSearchWatchingTopBar.visibility = View.VISIBLE
+        layoutSearchWatchingBottomBar.visibility = View.VISIBLE
+        tvSearchWatchingQuery.text = query
+
+        // Đổi danh sách phát trong ViewPager2 sang danh sách kết quả tìm kiếm
+        videoList.clear()
+        videoList.addAll(searchResultsList)
+        adapter.notifyDataSetChanged()
+        val targetPos = startPosition.coerceIn(0, (videoList.size - 1).coerceAtLeast(0))
+        viewPager.setCurrentItem(targetPos, false)
+        playVideoAt(targetPos)
+    }
+
+    private fun exitSearchWatchingMode() {
+        if (!isWatchingFromSearch) return
+        isWatchingFromSearch = false
+
+        layoutSearchWatchingTopBar.visibility = View.GONE
+        layoutSearchWatchingBottomBar.visibility = View.GONE
+
+        layoutSearchOverlay.visibility = View.VISIBLE
+        scrollSearchSuggestions.visibility = View.GONE
+        layoutSearchCategoryTabs.visibility = View.VISIBLE
+        rvSearchResults.visibility = View.VISIBLE
+
+        exoPlayer?.pause()
     }
 
     private fun openSearchOverlay() {
@@ -483,6 +603,19 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(etSearchInput.windowToken, 0)
         layoutSearchOverlay.visibility = View.GONE
+
+        // Trở về giao diện Trang chủ nếu đang xem kết quả tìm kiếm
+        if (isShowingSearchResults) {
+            isShowingSearchResults = false
+            videoList.clear()
+            videoList.addAll(homeVideoList)
+            adapter.notifyDataSetChanged()
+            val targetPos = lastHomePosition.coerceIn(0, (videoList.size - 1).coerceAtLeast(0))
+            viewPager.setCurrentItem(targetPos, false)
+            playVideoAt(targetPos)
+        }
+        topBar.visibility = View.VISIBLE
+        bottomNav.visibility = View.VISIBLE
         if (!isManuallyPaused && exoPlayer?.playbackState == Player.STATE_READY && exoPlayer?.isPlaying == false) {
             exoPlayer?.play()
         }
@@ -638,6 +771,17 @@ class MainActivity : AppCompatActivity() {
         profileVideosList.addAll(authorVideos)
         rvProfileVideos.adapter?.notifyDataSetChanged()
 
+        // Tải thêm danh sách video của tác giả trực tuyến từ máy chủ
+        repository.fetchAuthorVideos(item.authorUniqueId, item.author) { networkVideos ->
+            runOnUiThread {
+                if (networkVideos.isNotEmpty()) {
+                    profileVideosList.clear()
+                    profileVideosList.addAll(networkVideos)
+                    rvProfileVideos.adapter?.notifyDataSetChanged()
+                }
+            }
+        }
+
         layoutProfileOverlay.visibility = View.VISIBLE
     }
 
@@ -651,19 +795,16 @@ class MainActivity : AppCompatActivity() {
     private fun setupBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (layoutProfileOverlay.visibility == View.VISIBLE) {
+                if (isLandscapeFullscreen) {
+                    toggleLandscapeFullscreen()
+                } else if (layoutProfileOverlay.visibility == View.VISIBLE) {
                     closeAuthorProfile()
+                } else if (isWatchingFromSearch) {
+                    exitSearchWatchingMode()
                 } else if (layoutSearchOverlay.visibility == View.VISIBLE) {
                     closeSearchOverlay()
                 } else if (isShowingSearchResults) {
-                    // Trở về bảng tin Trang chủ từ kết quả tìm kiếm
-                    isShowingSearchResults = false
-                    videoList.clear()
-                    videoList.addAll(homeVideoList)
-                    adapter.notifyDataSetChanged()
-                    val targetPos = lastHomePosition.coerceIn(0, (videoList.size - 1).coerceAtLeast(0))
-                    viewPager.setCurrentItem(targetPos, false)
-                    playVideoAt(targetPos)
+                    closeSearchOverlay()
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -956,6 +1097,30 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        runOnUiThread {
+                            val holder = getCurrentViewHolder() ?: return@runOnUiThread
+                            if (videoSize.width > 0 && videoSize.height > 0) {
+                                val ratio = videoSize.width.toFloat() / videoSize.height.toFloat()
+                                if (ratio > 1.25f) {
+                                    // Video 16:9 ngang: hiển thị nút Toàn màn hình & hiệu ứng Ambient Glow
+                                    holder.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    holder.layoutWidescreenPill.visibility = View.VISIBLE
+                                    holder.ivAmbientGlow.visibility = View.VISIBLE
+                                    val curPos = this@MainActivity.currentPosition
+                                    if (curPos in videoList.indices) {
+                                        ImageLoader.load(videoList[curPos].coverUrl, holder.ivAmbientGlow, false)
+                                    }
+                                } else {
+                                    // Video dọc 9:16 chuẩn TikTok
+                                    holder.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    holder.layoutWidescreenPill.visibility = View.GONE
+                                    holder.ivAmbientGlow.visibility = View.GONE
+                                }
+                            }
+                        }
+                    }
+
                     override fun onPlayerError(error: PlaybackException) {
                         viewPager.postDelayed({
                             playNextVideo()
@@ -1002,6 +1167,9 @@ class MainActivity : AppCompatActivity() {
             },
             onDoubleTapLike = { item ->
                 repository.recordInteraction(item, 1.0f, true, false)
+            },
+            onFullscreenClick = { _ ->
+                toggleLandscapeFullscreen()
             }
         )
         adapter.exoPlayer = exoPlayer
@@ -1035,6 +1203,31 @@ class MainActivity : AppCompatActivity() {
         startProgressUpdater()
     }
 
+    private fun toggleLandscapeFullscreen() {
+        if (isLandscapeFullscreen) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            isLandscapeFullscreen = false
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            if (isWatchingFromSearch) {
+                layoutSearchWatchingTopBar.visibility = View.VISIBLE
+                layoutSearchWatchingBottomBar.visibility = View.VISIBLE
+            } else {
+                topBar.visibility = View.VISIBLE
+                bottomNav.visibility = View.VISIBLE
+            }
+        } else {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            isLandscapeFullscreen = true
+            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+            topBar.visibility = View.GONE
+            bottomNav.visibility = View.GONE
+            layoutSearchWatchingTopBar.visibility = View.GONE
+            layoutSearchWatchingBottomBar.visibility = View.GONE
+        }
+    }
+
     private fun playVideoAt(position: Int) {
         if (position < 0 || position >= videoList.size) return
         currentPosition = position
@@ -1056,6 +1249,11 @@ class MainActivity : AppCompatActivity() {
             val holder = getCurrentViewHolder()
             if (holder != null) {
                 holder.playerView.player = exoPlayer
+                // Mặc định đặt chế độ ZOOM dọc và ẩn nút toàn màn hình/ambient glow cho video mới
+                holder.playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                holder.layoutWidescreenPill.visibility = View.GONE
+                holder.ivAmbientGlow.visibility = View.GONE
+
                 // Luôn hiển thị thumbnail ảnh bìa trước khi phát để không bị đen màn hình
                 holder.ivThumbnail.visibility = View.VISIBLE
                 holder.ivCenterPlay.visibility = View.GONE

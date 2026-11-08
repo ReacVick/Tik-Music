@@ -379,6 +379,85 @@ class TikTokRepository {
         return vnKeywords.any { lower.contains(it) }
     }
 
+    fun fetchAuthorVideos(
+        authorUniqueId: String,
+        authorNickname: String,
+        onResult: (List<TikTokItem>) -> Unit
+    ) {
+        executor.execute {
+            val authorVideos = mutableListOf<TikTokItem>()
+            val seen = mutableSetOf<String>()
+
+            // 1. Quét ngay trong bộ nhớ hiện có
+            val local = allLoadedVideos.filter {
+                (authorUniqueId.isNotEmpty() && it.authorUniqueId.equals(authorUniqueId, ignoreCase = true)) ||
+                it.author.equals(authorNickname, ignoreCase = true) ||
+                it.author.equals("@$authorNickname", ignoreCase = true)
+            }
+            for (item in local) {
+                if (!seen.contains(item.id)) {
+                    seen.add(item.id)
+                    authorVideos.add(item)
+                }
+            }
+
+            // 2. Truy vấn mạng theo unique_id hoặc nickname của kênh
+            val searchKey = authorUniqueId.ifEmpty { normalizeVietnamese(authorNickname).replace(Regex("[^a-zA-Z0-9]"), "") }
+            if (searchKey.isNotEmpty()) {
+                try {
+                    val encoded = URLEncoder.encode(searchKey, "UTF-8")
+                    val searchUrl = "https://www.tikwm.com/api/challenge/search?keywords=$encoded"
+                    val conn = (URL(searchUrl).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 4000
+                        readTimeout = 4000
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                        setRequestProperty("Referer", "https://www.tikwm.com/")
+                        setRequestProperty("Accept", "application/json")
+                    }
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = JSONObject(jsonStr)
+                    if (root.optInt("code") == 0) {
+                        val list = root.optJSONObject("data")?.optJSONArray("challenge_list")
+                        val chaId = list?.optJSONObject(0)?.optString("id") ?: ""
+                        if (chaId.isNotEmpty()) {
+                            val postsUrl = "https://www.tikwm.com/api/challenge/posts?challenge_id=$chaId&count=30"
+                            val pConn = (URL(postsUrl).openConnection() as HttpURLConnection).apply {
+                                connectTimeout = 5000
+                                readTimeout = 5000
+                                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                                setRequestProperty("Referer", "https://www.tikwm.com/")
+                                setRequestProperty("Accept", "application/json")
+                            }
+                            val pJson = pConn.inputStream.bufferedReader().use { it.readText() }
+                            val pRoot = JSONObject(pJson)
+                            val pVideos = pRoot.optJSONObject("data")?.optJSONArray("videos")
+                            if (pVideos != null) {
+                                for (i in 0 until pVideos.length()) {
+                                    val item = parseItemJsonObject(pVideos.getJSONObject(i))
+                                    if (item != null && !seen.contains(item.id)) {
+                                        seen.add(item.id)
+                                        authorVideos.add(item)
+                                        allLoadedVideos.add(item)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 3. Bổ sung các video chất lượng cao nếu cần để lưới 3 cột luôn đầy đặn
+            if (authorVideos.size < 6) {
+                val extra = allLoadedVideos.filter { !seen.contains(it.id) }.take(9 - authorVideos.size)
+                authorVideos.addAll(extra)
+            }
+
+            onResult(authorVideos)
+        }
+    }
+
     fun getVideosByAuthor(authorUniqueId: String, authorNickname: String): List<TikTokItem> {
         val direct = allLoadedVideos.filter {
             (authorUniqueId.isNotEmpty() && it.authorUniqueId.equals(authorUniqueId, ignoreCase = true)) ||
