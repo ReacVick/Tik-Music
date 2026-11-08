@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -16,6 +17,7 @@ import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -26,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import java.net.URLDecoder
 
 class MainActivity : AppCompatActivity() {
 
@@ -45,8 +48,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // User Agent Chrome Mobile Android chuẩn
         private const val CHROME_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14; Mobile; rv:125.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36"
 
         private const val PURGE_CSS = """
             /* ============================================================
@@ -119,6 +123,26 @@ class MainActivity : AppCompatActivity() {
                 if (window.__tiktokCleanInjected) return;
                 window.__tiktokCleanInjected = true;
 
+                // Chặn triệt để mọi hành vi chuyển hướng sang app TikTok (snssdk://, intent://)
+                const blockSchemes = ['snssdk', 'intent:', 'market:'];
+                const origOpen = window.open;
+                window.open = function(url, target, features) {
+                    if (typeof url === 'string' && blockSchemes.some(s => url.startsWith(s))) {
+                        return null;
+                    }
+                    return origOpen.apply(this, arguments);
+                };
+
+                document.addEventListener('click', function(e) {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        if (blockSchemes.some(s => link.href.startsWith(s)) || link.href.includes('tiktok.com/download')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                }, true);
+
                 // Thêm CSS loại bỏ TikTok Shop & Banner
                 function injectCleanStyles() {
                     if (document.getElementById('tiktok-clean-style')) return;
@@ -163,7 +187,6 @@ class MainActivity : AppCompatActivity() {
                 };
 
                 window.tiktokScrollNext = function() {
-                    // Cuộn sang video tiếp theo trên dòng For You
                     window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
                     setTimeout(() => {
                         const nextVideo = document.querySelector('video');
@@ -179,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                     }, 400);
                 };
 
-                // Lắng nghe sự kiện bắt đầu phát video để đẩy siêu dữ liệu lên Đảo Origin
+                // Lắng nghe sự kiện phát video để đẩy siêu dữ liệu lên Đảo Origin
                 function hookVideos() {
                     const videos = document.querySelectorAll('video');
                     videos.forEach(v => {
@@ -195,7 +218,6 @@ class MainActivity : AppCompatActivity() {
                         });
 
                         v.addEventListener('ended', () => {
-                            // Tự động chuyển bài tiếp theo khi hết video (kể cả khi tắt màn hình)
                             window.tiktokScrollNext();
                         });
                     });
@@ -203,7 +225,6 @@ class MainActivity : AppCompatActivity() {
 
                 function reportVideoState(v, isPlaying) {
                     try {
-                        // Trích xuất tên tác giả & caption
                         let author = '@tiktok';
                         let title = 'TikTok Clean';
                         let coverUrl = '';
@@ -245,7 +266,6 @@ class MainActivity : AppCompatActivity() {
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // Khi tắt màn hình khóa máy: TUYỆT ĐỐI KHÔNG PAUSE WebView, tiếp tục cho âm thanh phát 100%!
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                 runOnUiThread {
                     webView.resumeTimers()
@@ -276,8 +296,8 @@ class MainActivity : AppCompatActivity() {
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenReceiver, filter)
 
-        // Bắt đầu tải trang chính thức của TikTok
-        webView.loadUrl("https://www.tiktok.com/foryou")
+        // Tải trang web chính thức TikTok
+        webView.loadUrl("https://www.tiktok.com/")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -295,7 +315,7 @@ class MainActivity : AppCompatActivity() {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.userAgentString = CHROME_USER_AGENT
 
-        // Cho phép lưu Cookie đăng nhập tài khoản vĩnh viễn
+        // Lưu cookie vĩnh viễn
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -322,11 +342,56 @@ class MainActivity : AppCompatActivity() {
                 injectCleanScript()
             }
 
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val url = request?.url?.toString() ?: return true
+
+                // Nếu là URL web thông thường (http / https):
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    // Chặn các link bắt tải app hoặc chuyển sang Google Play Store
+                    if (url.contains("play.google.com") || url.contains("tiktok.com/download")) {
+                        return true
+                    }
+                    return false // Tiếp tục xem video trong WebView
+                }
+
+                // Nếu là custom scheme của app TikTok (snssdk1180://, snssdk1233://, intent://)
+                // Đây chính là nguyên nhân gây ra lỗi net::ERR_UNKNOWN_URL_SCHEME!
+                try {
+                    val uri = Uri.parse(url)
+                    val paramsUrl = uri.getQueryParameter("params_url")
+                    if (!paramsUrl.isNullOrBlank()) {
+                        val decoded = URLDecoder.decode(paramsUrl, "UTF-8")
+                        if (decoded.startsWith("http")) {
+                            view?.loadUrl(decoded)
+                            return true
+                        }
+                    }
+                } catch (_: Exception) {}
+
+                // Nuốt (consume) lệnh điều hướng scheme lạ, TUYỆT ĐỐI không để WebView báo lỗi màn hình trắng!
+                return true
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                val url = request?.url?.toString() ?: ""
+                // Bỏ qua lỗi của scheme snssdk / intent
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    return
+                }
+                super.onReceivedError(view, request, error)
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // Chặn triệt để các URL quảng cáo & tracking rác
                 val url = request?.url?.toString() ?: ""
                 if (url.contains("tiktokcdn.com/obj/e-commerce") ||
                     url.contains("byteoversea.com/api/ad/") ||
