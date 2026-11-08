@@ -34,8 +34,7 @@ async function deployToHuggingFace() {
     'styles.css',
     'catalog_bundle.js',
     'feed_data.json',
-    'manifest.json',
-    'TikTokMusic-Clean.apk'
+    'manifest.json'
   ];
 
   const lines = [];
