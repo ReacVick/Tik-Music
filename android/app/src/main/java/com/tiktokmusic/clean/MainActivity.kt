@@ -2,6 +2,7 @@ package com.tiktokmusic.clean
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,7 +13,9 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -28,6 +31,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import java.net.URLDecoder
 
 class MainActivity : AppCompatActivity() {
@@ -48,9 +53,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // User Agent Chrome Mobile Android chuẩn
+        // User Agent Chrome Mobile chuẩn (Tránh bị Google OAuth chặn lỗi 400 / disallowed_useragent)
         private const val CHROME_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
         private const val PURGE_CSS = """
             /* ============================================================
@@ -72,7 +77,6 @@ class MainActivity : AppCompatActivity() {
             [class*="AppBanner"],
             .tiktok-14j1t75-DivBannerContainer,
             .css-1sdyv6b-DivBannerWrapper,
-            [data-e2e="header-login-button"],
 
             /* 2. Xóa 100% TikTok Shop, giỏ hàng vàng, túi hàng & thẻ sản phẩm */
             [data-e2e*="shop"],
@@ -98,7 +102,7 @@ class MainActivity : AppCompatActivity() {
             [class*="product-anchor"],
             [class*="ProductAnchor"],
 
-            /* 3. Xóa các nút mua hàng, nạp xu & thanh toán */
+            /* 3. Xóa các nút nạp xu, ví tiền & thanh toán thương mại */
             [class*="recharge"],
             [class*="Recharge"],
             [class*="coin"],
@@ -123,15 +127,8 @@ class MainActivity : AppCompatActivity() {
                 if (window.__tiktokCleanInjected) return;
                 window.__tiktokCleanInjected = true;
 
-                // Chặn triệt để mọi hành vi chuyển hướng sang app TikTok (snssdk://, intent://)
+                // Chặn các deep link cố tình ép mở app TikTok gốc
                 const blockSchemes = ['snssdk', 'intent:', 'market:'];
-                const origOpen = window.open;
-                window.open = function(url, target, features) {
-                    if (typeof url === 'string' && blockSchemes.some(s => url.startsWith(s))) {
-                        return null;
-                    }
-                    return origOpen.apply(this, arguments);
-                };
 
                 document.addEventListener('click', function(e) {
                     const link = e.target.closest('a');
@@ -156,7 +153,6 @@ class MainActivity : AppCompatActivity() {
                 // Observer liên tục dọn sạch các popup rác & nút quảng cáo/shop xuất hiện động
                 const observer = new MutationObserver(() => {
                     injectCleanStyles();
-                    // Đóng tự động các popup 'Mở app'
                     const closeBtns = document.querySelectorAll('[aria-label="Close"], [class*="close-button"], [class*="CloseButton"], [class*="btn-close"]');
                     closeBtns.forEach(b => {
                         const parentText = b.closest('div')?.innerText || '';
@@ -167,7 +163,7 @@ class MainActivity : AppCompatActivity() {
                 });
                 observer.observe(document.documentElement, { childList: true, subtree: true });
 
-                // Các hàm điều khiển Player từ tầng Native (Đảo Origin & Màn hình khóa)
+                // Điều khiển Player từ tầng Native
                 window.tiktokPlay = function() {
                     const v = document.querySelector('video');
                     if (v && v.paused) v.play().catch(()=>{});
@@ -279,7 +275,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         instance = this
 
-        // Tràn viền toàn màn hình
+        // Toàn màn hình
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -296,13 +292,11 @@ class MainActivity : AppCompatActivity() {
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenReceiver, filter)
 
-        // Tải trang web chính thức TikTok
         webView.loadUrl("https://www.tiktok.com/")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebView() {
-        val settings = webView.settings
+    private fun applyCommonSettings(settings: WebSettings) {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
@@ -314,8 +308,19 @@ class MainActivity : AppCompatActivity() {
         settings.cacheMode = WebSettings.LOAD_DEFAULT
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.userAgentString = CHROME_USER_AGENT
+        settings.setSupportMultipleWindows(true)
+        settings.javaScriptCanOpenWindowsAutomatically = true
 
-        // Lưu cookie vĩnh viễn
+        // Xóa hoàn toàn header X-Requested-With để Google không nhận diện đây là app nhúng
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+            WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setupWebView() {
+        applyCommonSettings(webView.settings)
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -327,6 +332,57 @@ class MainActivity : AppCompatActivity() {
                 if (newProgress >= 80) {
                     initProgress.visibility = View.GONE
                 }
+            }
+
+            // Hỗ trợ cửa sổ đăng nhập dạng Popup (Google OAuth / Facebook OAuth)
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                val dialog = Dialog(this@MainActivity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+                val popupWebView = WebView(this@MainActivity).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+                applyCommonSettings(popupWebView.settings)
+
+                popupWebView.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView?) {
+                        dialog.dismiss()
+                    }
+                }
+
+                popupWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView?, request: WebResourceRequest?): Boolean {
+                        val url = request?.url?.toString() ?: return false
+                        if (url.startsWith("http://") || url.startsWith("https://")) {
+                            return false
+                        }
+                        return true
+                    }
+
+                    override fun onPageFinished(v: WebView?, url: String?) {
+                        super.onPageFinished(v, url)
+                        // Khi đăng nhập thành công và Google điều hướng lại về tiktok
+                        if (url != null && (url.contains("tiktok.com") && !url.contains("accounts.google.com"))) {
+                            CookieManager.getInstance().flush()
+                            dialog.dismiss()
+                            webView.reload()
+                        }
+                    }
+                }
+
+                dialog.setContentView(popupWebView)
+                dialog.show()
+
+                val transport = resultMsg?.obj as? WebView.WebViewTransport
+                transport?.webView = popupWebView
+                resultMsg?.sendToTarget()
+                return true
             }
         }
 
@@ -348,17 +404,13 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val url = request?.url?.toString() ?: return true
 
-                // Nếu là URL web thông thường (http / https):
                 if (url.startsWith("http://") || url.startsWith("https://")) {
-                    // Chặn các link bắt tải app hoặc chuyển sang Google Play Store
                     if (url.contains("play.google.com") || url.contains("tiktok.com/download")) {
                         return true
                     }
-                    return false // Tiếp tục xem video trong WebView
+                    return false
                 }
 
-                // Nếu là custom scheme của app TikTok (snssdk1180://, snssdk1233://, intent://)
-                // Đây chính là nguyên nhân gây ra lỗi net::ERR_UNKNOWN_URL_SCHEME!
                 try {
                     val uri = Uri.parse(url)
                     val paramsUrl = uri.getQueryParameter("params_url")
@@ -371,7 +423,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (_: Exception) {}
 
-                // Nuốt (consume) lệnh điều hướng scheme lạ, TUYỆT ĐỐI không để WebView báo lỗi màn hình trắng!
                 return true
             }
 
@@ -381,7 +432,6 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?
             ) {
                 val url = request?.url?.toString() ?: ""
-                // Bỏ qua lỗi của scheme snssdk / intent
                 if (!url.startsWith("http://") && !url.startsWith("https://")) {
                     return
                 }
