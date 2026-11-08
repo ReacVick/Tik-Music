@@ -10,11 +10,21 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <queries>
+        <package android:name="com.zhiliaoapp.musically" />
+        <package android:name="com.ss.android.ugc.trill" />
+        <package android:name="com.zhiliaoapp.musically.go" />
+        <package android:name="com.ss.android.ugc.tiktok" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="TikTok Clean"
+        android:label="Trợ Lý Đảo Origin"
         android:supportsRtl="true"
         android:theme="@style/Theme.TikTokMusic"
         android:usesCleartextTraffic="true"
@@ -32,7 +42,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Dịch vụ phát nhạc chạy ngầm & Kết nối trực tiếp Đảo Origin (Origin Island) trên Vivo OriginOS 6 -->
+        <!-- Dịch vụ kích hoạt Đảo Origin (Origin Island) trên Vivo OriginOS 6 -->
         <service
             android:name=".OriginMediaService"
             android:enabled="true"

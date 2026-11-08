@@ -124,25 +124,25 @@ class OriginMediaService : Service() {
                 )
                 setCallback(object : MediaSession.Callback() {
                     override fun onPlay() {
-                        MainActivity.dispatchMediaAction("play")
                         currentIsPlaying = true
                         updatePlaybackState(PlaybackState.STATE_PLAYING)
                         refreshNotification(cachedBitmap ?: defaultArtwork)
                     }
 
                     override fun onPause() {
-                        MainActivity.dispatchMediaAction("pause")
                         currentIsPlaying = false
                         updatePlaybackState(PlaybackState.STATE_PAUSED)
                         refreshNotification(cachedBitmap ?: defaultArtwork)
                     }
 
                     override fun onSkipToNext() {
-                        MainActivity.dispatchMediaAction("next")
+                        updatePlaybackState(PlaybackState.STATE_PLAYING)
+                        refreshNotification(cachedBitmap ?: defaultArtwork)
                     }
 
                     override fun onSkipToPrevious() {
-                        MainActivity.dispatchMediaAction("prev")
+                        updatePlaybackState(PlaybackState.STATE_PLAYING)
+                        refreshNotification(cachedBitmap ?: defaultArtwork)
                     }
                 })
                 isActive = true
