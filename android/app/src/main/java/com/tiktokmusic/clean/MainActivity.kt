@@ -1,6 +1,7 @@
 package com.tiktokmusic.clean
 
 import android.Manifest
+import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -10,8 +11,10 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -46,6 +49,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -700,9 +704,150 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    private fun showCommentsBottomSheet(item: TikTokItem) {
+        val dialog = BottomSheetDialog(this)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_tiktok_comments, null)
+        dialog.setContentView(dialogView)
+
+        val tvTitle = dialogView.findViewById<TextView>(R.id.tvCommentsTitle)
+        val ivClose = dialogView.findViewById<ImageView>(R.id.ivCloseComments)
+        val rvComments = dialogView.findViewById<RecyclerView>(R.id.rvCommentsList)
+        val pbLoading = dialogView.findViewById<ProgressBar>(R.id.pbCommentsLoading)
+        val tvEmpty = dialogView.findViewById<TextView>(R.id.tvCommentsEmpty)
+        val etInput = dialogView.findViewById<EditText>(R.id.etCommentInput)
+        val btnSend = dialogView.findViewById<ImageView>(R.id.btnSendComment)
+
+        ivClose?.setOnClickListener { dialog.dismiss() }
+
+        val comments = mutableListOf<TikTokComment>()
+        val commentAdapter = TikTokCommentAdapter(comments)
+        rvComments?.layoutManager = LinearLayoutManager(this)
+        rvComments?.adapter = commentAdapter
+
+        tvTitle?.text = "Bình luận (${item.commentCount})"
+        pbLoading?.visibility = View.VISIBLE
+        tvEmpty?.visibility = View.GONE
+
+        repository.fetchComments(item.videoUrl) { fetchedList ->
+            runOnUiThread {
+                pbLoading?.visibility = View.GONE
+                comments.clear()
+                comments.addAll(fetchedList)
+                commentAdapter.notifyDataSetChanged()
+                tvTitle?.text = "Bình luận (${comments.size})"
+                if (comments.isEmpty()) {
+                    tvEmpty?.visibility = View.VISIBLE
+                }
+            }
+        }
+
+        btnSend?.setOnClickListener {
+            val text = etInput?.text?.toString()?.trim() ?: ""
+            if (text.isNotEmpty()) {
+                val newComment = TikTokComment(
+                    id = "my_${System.currentTimeMillis()}",
+                    text = text,
+                    author = "Tôi (Bạn)",
+                    authorAvatar = "",
+                    timeAgo = "Vừa xong",
+                    likeCount = "0",
+                    isLiked = false
+                )
+                comments.add(0, newComment)
+                commentAdapter.notifyItemInserted(0)
+                rvComments?.scrollToPosition(0)
+                tvEmpty?.visibility = View.GONE
+                tvTitle?.text = "Bình luận (${comments.size})"
+                etInput?.text?.clear()
+                Toast.makeText(this, "Đã gửi bình luận!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun showShareBottomSheet(item: TikTokItem) {
+        val dialog = BottomSheetDialog(this)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_tiktok_share, null)
+        dialog.setContentView(dialogView)
+
+        val btnCopy = dialogView.findViewById<View>(R.id.btnShareCopyLink)
+        val btnDownload = dialogView.findViewById<View>(R.id.btnShareDownload)
+        val btnSpeed = dialogView.findViewById<View>(R.id.btnShareSpeed)
+        val btnMore = dialogView.findViewById<View>(R.id.btnShareMore)
+        val btnCancel = dialogView.findViewById<View>(R.id.btnShareCancel)
+
+        btnCancel?.setOnClickListener { dialog.dismiss() }
+
+        btnCopy?.setOnClickListener {
+            dialog.dismiss()
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("TikTok Video URL", item.videoUrl)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "📋 Đã sao chép liên kết video!", Toast.LENGTH_SHORT).show()
+        }
+
+        btnDownload?.setOnClickListener {
+            dialog.dismiss()
+            downloadVideo(item)
+        }
+
+        btnSpeed?.setOnClickListener {
+            dialog.dismiss()
+            showPlaybackSpeedDialog()
+        }
+
+        btnMore?.setOnClickListener {
+            dialog.dismiss()
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "${item.title} - ${item.videoUrl}")
+            }
+            startActivity(Intent.createChooser(shareIntent, "Chia sẻ video"))
+        }
+
+        dialog.show()
+    }
+
+    private fun showPlaybackSpeedDialog() {
+        val speeds = arrayOf("0.5x (Chậm)", "0.75x", "1.0x (Chuẩn)", "1.25x", "1.5x (Nhanh)", "2.0x (Cực nhanh)")
+        val speedValues = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("⚡ Tùy chỉnh tốc độ phát")
+            .setItems(speeds) { _, which ->
+                val selectedSpeed = speedValues[which]
+                exoPlayer?.setPlaybackSpeed(selectedSpeed)
+                Toast.makeText(this, "Đang phát ở tốc độ: ${speeds[which]}", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun downloadVideo(item: TikTokItem) {
+        try {
+            if (item.videoUrl.startsWith("asset:///")) {
+                Toast.makeText(this, "Video này đã có sẵn trong ứng dụng của bạn!", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val request = DownloadManager.Request(Uri.parse(item.videoUrl)).apply {
+                setTitle("TikTok - ${item.title}")
+                setDescription("Đang lưu video từ ${item.author}")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "TikTok_${item.id}.mp4")
+                setAllowedOverMetered(true)
+                setAllowedOverRoaming(true)
+            }
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.enqueue(request)
+            Toast.makeText(this, "📥 Đang tải video về máy... Hãy xem thanh thông báo!", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Không thể tải: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun loadInitialFeed() {
         initProgress.visibility = View.VISIBLE
-        repository.fetchVietnameseFeed(20) { items ->
+        repository.fetchVietnameseFeed(this, 20) { items ->
             runOnUiThread {
                 initProgress.visibility = View.GONE
                 if (items.isNotEmpty()) {
@@ -727,7 +872,7 @@ class MainActivity : AppCompatActivity() {
         if (isLoadingMore || isShowingSearchResults) return
         isLoadingMore = true
 
-        repository.fetchVietnameseFeed(20) { moreItems ->
+        repository.fetchVietnameseFeed(this, 20) { moreItems ->
             runOnUiThread {
                 isLoadingMore = false
                 if (moreItems.isNotEmpty()) {
@@ -850,11 +995,13 @@ class MainActivity : AppCompatActivity() {
                 showOptionsMenu(item)
             },
             onShareClick = { item ->
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "${item.title} - ${item.videoUrl}")
-                }
-                startActivity(Intent.createChooser(shareIntent, "Chia sẻ video"))
+                showShareBottomSheet(item)
+            },
+            onCommentClick = { item ->
+                showCommentsBottomSheet(item)
+            },
+            onDoubleTapLike = { item ->
+                repository.recordInteraction(item, 1.0f, true, false)
             }
         )
         adapter.exoPlayer = exoPlayer

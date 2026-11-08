@@ -22,6 +22,14 @@
         android:scaleType="centerCrop"
         android:contentDescription="Video Thumbnail" />
 
+    <!-- Lớp chứa hoạt họa thả tim kép bùng nổ chuẩn TikTok (Double tap heart container) -->
+    <FrameLayout
+        android:id="@+id/heartAnimationContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false" />
+
     <!-- 3. Lớp gradient mờ phía dưới giúp phụ đề sắc nét -->
     <View
         android:layout_width="match_parent"

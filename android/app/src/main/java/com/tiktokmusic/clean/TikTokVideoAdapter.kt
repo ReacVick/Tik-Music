@@ -2,7 +2,9 @@ package com.tiktokmusic.clean
 
 import android.animation.ObjectAnimator
 import android.graphics.Color
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.LinearInterpolator
@@ -20,7 +22,9 @@ class TikTokVideoAdapter(
     private val onVideoClick: (position: Int, isPlaying: Boolean) -> Unit,
     private val onAuthorClick: (item: TikTokItem) -> Unit,
     private val onLongClick: (item: TikTokItem) -> Unit,
-    private val onShareClick: (item: TikTokItem) -> Unit
+    private val onShareClick: (item: TikTokItem) -> Unit,
+    private val onCommentClick: (item: TikTokItem) -> Unit,
+    private val onDoubleTapLike: (item: TikTokItem) -> Unit
 ) : RecyclerView.Adapter<TikTokVideoAdapter.VideoViewHolder>() {
 
     var exoPlayer: ExoPlayer? = null
@@ -29,6 +33,7 @@ class TikTokVideoAdapter(
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val playerView: PlayerView = itemView.findViewById(R.id.playerView)
         val ivThumbnail: ImageView = itemView.findViewById(R.id.ivThumbnail)
+        val heartAnimationContainer: FrameLayout = itemView.findViewById(R.id.heartAnimationContainer)
         val ivCenterPlay: ImageView = itemView.findViewById(R.id.ivCenterPlay)
 
         val btnAuthorAvatar: View = itemView.findViewById(R.id.btnAuthorAvatar)
@@ -139,9 +144,9 @@ class TikTokVideoAdapter(
             }
         }
 
-        // Tương tác bấm vào Comment
+        // Tương tác bấm vào Comment: Mở khung bình luận thực tế chuẩn TikTok
         holder.btnComment.setOnClickListener {
-            Toast.makeText(holder.itemView.context, "Bình luận: ${item.commentCount} lượt thảo luận", Toast.LENGTH_SHORT).show()
+            onCommentClick(item)
         }
 
         // Tương tác lưu bookmark
@@ -160,25 +165,80 @@ class TikTokVideoAdapter(
             onShareClick(item)
         }
 
-        // Chạm vào màn hình để Tạm dừng / Phát tiếp
-        holder.itemView.setOnClickListener {
-            val isCurrentlyPlaying = holder.ivCenterPlay.visibility != View.VISIBLE
-            if (isCurrentlyPlaying) {
-                holder.ivCenterPlay.visibility = View.VISIBLE
-                holder.discAnimator?.pause()
-                onVideoClick(position, false)
-            } else {
-                holder.ivCenterPlay.visibility = View.GONE
-                holder.discAnimator?.resume()
-                onVideoClick(position, true)
+        // Nhận diện cử chỉ chạm đơn (Play/Pause), chạm kép (Double Tap Thả tim), nhấn giữ (Menu)
+        val gestureDetector = GestureDetector(holder.itemView.context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                val isCurrentlyPlaying = holder.ivCenterPlay.visibility != View.VISIBLE
+                if (isCurrentlyPlaying) {
+                    holder.ivCenterPlay.visibility = View.VISIBLE
+                    holder.discAnimator?.pause()
+                    onVideoClick(position, false)
+                } else {
+                    holder.ivCenterPlay.visibility = View.GONE
+                    holder.discAnimator?.resume()
+                    onVideoClick(position, true)
+                }
+                return true
             }
-        }
 
-        // Nhấn giữ màn hình (Long Click) để mở menu Tùy chọn (Tự cuộn, v.v.)
-        holder.itemView.setOnLongClickListener {
-            onLongClick(item)
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                showBurstHeartAnimation(holder, e.x, e.y)
+                if (!holder.isLiked) {
+                    holder.isLiked = true
+                    holder.ivLikeHeart.setColorFilter(Color.parseColor("#FE2C55"))
+                    holder.ivLikeHeart.animate().scaleX(1.3f).scaleY(1.3f).setDuration(120).withEndAction {
+                        holder.ivLikeHeart.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start()
+                    }.start()
+                }
+                onDoubleTapLike(item)
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                onLongClick(item)
+            }
+        })
+
+        holder.itemView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
             true
         }
+    }
+
+    private fun showBurstHeartAnimation(holder: VideoViewHolder, x: Float, y: Float) {
+        val context = holder.itemView.context
+        val heart = ImageView(context).apply {
+            setImageResource(R.drawable.ic_heart)
+            setColorFilter(Color.parseColor("#FE2C55"))
+            val size = (80 * context.resources.displayMetrics.density).toInt()
+            layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                leftMargin = (x - size / 2).toInt()
+                topMargin = (y - size / 2).toInt()
+            }
+            rotation = (-20..20).random().toFloat()
+            scaleX = 0.2f
+            scaleY = 0.2f
+            alpha = 0.95f
+        }
+        holder.heartAnimationContainer.addView(heart)
+
+        heart.animate()
+            .scaleX(1.25f)
+            .scaleY(1.25f)
+            .setDuration(180)
+            .withEndAction {
+                heart.animate()
+                    .scaleX(0.9f)
+                    .scaleY(0.9f)
+                    .alpha(0f)
+                    .translationYBy(-90f)
+                    .setDuration(350)
+                    .withEndAction {
+                        holder.heartAnimationContainer.removeView(heart)
+                    }
+                    .start()
+            }
+            .start()
     }
 
     override fun onViewAttachedToWindow(holder: VideoViewHolder) {

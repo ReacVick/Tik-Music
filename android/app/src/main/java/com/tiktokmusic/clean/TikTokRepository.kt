@@ -1,5 +1,7 @@
 package com.tiktokmusic.clean
 
+import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -28,11 +30,25 @@ class TikTokRepository {
      * Nạp nguồn cấp dữ liệu video Việt Nam chuẩn theo thuật toán đề xuất
      */
     fun fetchVietnameseFeed(
+        context: Context? = null,
         targetCount: Int = 20,
         onResult: (List<TikTokItem>) -> Unit
     ) {
         executor.execute {
             val collectedVnItems = mutableListOf<TikTokItem>()
+
+            // Ưu tiên nạp ngay các video chất lượng cao tích hợp sẵn (Offline Cache 0ms)
+            if (allLoadedVideos.isEmpty() && context != null) {
+                val offlineItems = loadOfflineVideos(context)
+                for (item in offlineItems) {
+                    if (!seenVideoIds.contains(item.id)) {
+                        seenVideoIds.add(item.id)
+                        collectedVnItems.add(item)
+                        allLoadedVideos.add(item)
+                    }
+                }
+            }
+
             var attempts = 0
 
             // Lặp để thu thập đủ số lượng video Việt Nam chất lượng cao
@@ -393,6 +409,104 @@ class TikTokRepository {
             count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0)
             count >= 1_000 -> String.format("%.1fK", count / 1_000.0)
             else -> count.toString()
+        }
+    }
+
+    fun loadOfflineVideos(context: Context): List<TikTokItem> {
+        val result = mutableListOf<TikTokItem>()
+        try {
+            val jsonStr = context.assets.open("offline_videos/manifest.json").bufferedReader().use { it.readText() }
+            val arr = JSONArray(jsonStr)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val assetPath = obj.optString("assetPath")
+                val item = TikTokItem(
+                    id = obj.optString("id"),
+                    videoUrl = "asset:///$assetPath",
+                    title = obj.optString("title"),
+                    author = "@${obj.optString("author")}",
+                    authorUniqueId = obj.optString("unique_id"),
+                    authorAvatar = obj.optString("avatar"),
+                    soundTitle = "♫ Bản nhạc xu hướng TikTok Việt Nam",
+                    coverUrl = obj.optString("cover"),
+                    likeCount = formatCount(obj.optInt("digg", 50000)),
+                    commentCount = formatCount(obj.optInt("comment", 1200)),
+                    shareCount = formatCount(obj.optInt("share", 8500)),
+                    isPhotoPost = false,
+                    images = emptyList()
+                )
+                result.add(item)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return result
+    }
+
+    /**
+     * Nạp danh sách bình luận thực tế chuẩn TikTok từ máy chủ
+     */
+    fun fetchComments(
+        videoUrl: String,
+        onResult: (List<TikTokComment>) -> Unit
+    ) {
+        executor.execute {
+            val commentsList = mutableListOf<TikTokComment>()
+            try {
+                val encodedUrl = URLEncoder.encode(videoUrl, "UTF-8")
+                val apiUrl = "https://www.tikwm.com/api/comment/list?url=$encodedUrl&count=30"
+                val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                    setRequestProperty("Referer", "https://www.tikwm.com/")
+                    setRequestProperty("Accept", "application/json")
+                }
+                val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(jsonStr)
+                if (root.optInt("code") == 0) {
+                    val dataObj = root.optJSONObject("data")
+                    val commentsArr = dataObj?.optJSONArray("comments")
+                    if (commentsArr != null) {
+                        for (i in 0 until commentsArr.length()) {
+                            val cObj = commentsArr.getJSONObject(i)
+                            val userObj = cObj.optJSONObject("user")
+                            val text = cObj.optString("text")
+                            val author = userObj?.optString("nickname") ?: "Người dùng TikTok"
+                            val avatar = userObj?.optString("avatar") ?: ""
+                            val diggCount = formatCount(cObj.optInt("digg_count", 0))
+                            val createTime = cObj.optLong("create_time", 0L)
+                            val timeAgo = formatTimeAgo(createTime)
+
+                            commentsList.add(
+                                TikTokComment(
+                                    id = cObj.optString("id", "c_$i"),
+                                    text = text,
+                                    author = author,
+                                    authorAvatar = avatar,
+                                    timeAgo = timeAgo,
+                                    likeCount = diggCount
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            onResult(commentsList)
+        }
+    }
+
+    private fun formatTimeAgo(timestampSeconds: Long): String {
+        if (timestampSeconds <= 0L) return "Vừa xong"
+        val diffSec = (System.currentTimeMillis() / 1000) - timestampSeconds
+        return when {
+            diffSec < 60 -> "Vừa xong"
+            diffSec < 3600 -> "${diffSec / 60} phút trước"
+            diffSec < 86400 -> "${diffSec / 3600} giờ trước"
+            diffSec < 2592000 -> "${diffSec / 86400} ngày trước"
+            else -> "${diffSec / 2592000} tháng trước"
         }
     }
 }
