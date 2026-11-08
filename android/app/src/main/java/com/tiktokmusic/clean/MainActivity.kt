@@ -1,113 +1,285 @@
 package com.tiktokmusic.clean
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
-import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import androidx.activity.OnBackPressedCallback
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.lang.ref.WeakReference
-
-/**
- * KeepAliveWebView: Giữ luồng phát nhạc/video HTML5 & bộ xử lý âm thanh Web Audio Dolby Atmos
- * chạy ngầm 100% liên tục kể cả khi người dùng thoát ra màn hình chính hoặc tắt màn hình khóa máy trên OriginOS 6.
- */
-class KeepAliveWebView(context: Context) : WebView(context) {
-    override fun onWindowVisibilityChanged(visibility: Int) {
-        // Luôn báo trạng thái VISIBLE cho nhân Chromium để không bao giờ tự ngắt nhạc khi chạy ngầm
-        super.onWindowVisibilityChanged(View.VISIBLE)
-    }
-
-    override fun onVisibilityChanged(changedView: View, visibility: Int) {
-        super.onVisibilityChanged(changedView, View.VISIBLE)
-    }
-
-    override fun dispatchWindowVisibilityChanged(visibility: Int) {
-        super.dispatchWindowVisibilityChanged(View.VISIBLE)
-    }
-
-    override fun onScreenStateChanged(screenState: Int) {
-        // Luôn báo màn hình đang BẬT để nhân Chromium không dừng decode âm thanh khi khóa máy
-        super.onScreenStateChanged(View.SCREEN_STATE_ON)
-    }
-}
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private var activeWebViewRef: WeakReference<WebView>? = null
+        private var instance: MainActivity? = null
 
         fun dispatchMediaAction(action: String, value: String = "0") {
-            val wv = activeWebViewRef?.get() ?: return
-            wv.post {
-                val safeAction = action.replace("'", "")
-                val safeVal = value.replace("'", "")
-                wv.evaluateJavascript(
-                    "window.__apkMediaControl && window.__apkMediaControl('$safeAction', '$safeVal');",
-                    null
-                )
-            }
-        }
-    }
-
-    private lateinit var webView: KeepAliveWebView
-    private var customView: View? = null
-    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-    private lateinit var fullscreenContainer: FrameLayout
-    private var isLandscapeLocked: Boolean = false
-
-    private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            webView.post {
-                webView.resumeTimers()
-                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                    webView.evaluateJavascript(
-                        "window.AndroidBridge && window.AndroidBridge.onScreenLocked && window.AndroidBridge.onScreenLocked();",
-                        null
-                    )
+            val act = instance ?: return
+            act.runOnUiThread {
+                when (action) {
+                    "play" -> act.resumeCurrentVideo()
+                    "pause" -> act.pauseCurrentVideo()
+                    "toggle" -> act.togglePlayPause()
+                    "next" -> act.playNextVideo()
+                    "prev" -> act.playPreviousVideo()
                 }
             }
         }
     }
 
-    // Ưu tiên nạp trực tiếp từ CDN tốc độ cao của Hugging Face Space, tự động fallback về bộ nhớ trong của APK nếu mất mạng
-    private val ONLINE_URL = "https://binh007-tik-music.static.hf.space/?v=20261108v2"
-    private val OFFLINE_URL = "file:///android_asset/index.html"
+    private lateinit var viewPager: ViewPager2
+    private lateinit var adapter: TikTokVideoAdapter
+    private lateinit var repository: TikTokRepository
+    private lateinit var initProgress: ProgressBar
+    private val videoList = mutableListOf<TikTokItem>()
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private var exoPlayer: ExoPlayer? = null
+    private var currentPosition: Int = 0
+    private val progressHandler = Handler(Looper.getMainLooper())
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            // Khi tắt màn hình khóa máy: TUYỆT ĐỐI KHÔNG PAUSE ExoPlayer, giữ âm thanh tiếp tục phát 100%!
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                exoPlayer?.playWhenReady = true
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-
-        window.statusBarColor = Color.parseColor("#07080d")
-        window.navigationBarColor = Color.parseColor("#07080d")
+        // Tràn viền 100% toàn màn hình siêu mượt
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemUI()
+
+        setContentView(R.layout.activity_main)
 
         requestNotificationPermissionIfNeeded()
-        startOriginMediaService()
+        initScreenReceiver()
+        initExoPlayer()
 
+        viewPager = findViewById(R.id.viewPager)
+        initProgress = findViewById(R.id.initProgress)
+        repository = TikTokRepository(this)
+
+        adapter = TikTokVideoAdapter(videoList) { pos, _ ->
+            togglePlayPause()
+        }
+        viewPager.adapter = adapter
+        viewPager.orientation = ViewPager2.ORIENTATION_VERTICAL
+        viewPager.offscreenPageLimit = 2
+
+        // Lắng nghe sự kiện chuyển trang vuốt dọc
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                super.onPageSelected(position)
+                currentPosition = position
+                playVideoAt(position)
+
+                // Khi lướt gần hết danh sách, tự động cào thêm video mới ngầm
+                if (position >= videoList.size - 4) {
+                    loadMoreOnlineVideos()
+                }
+            }
+        })
+
+        // Bắt đầu nạp video
+        loadInitialFeed()
+    }
+
+    private fun hideSystemUI() {
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun initExoPlayer() {
+        exoPlayer = ExoPlayer.Builder(this)
+            .setHandleAudioBecomingNoisy(true)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) {
+                            // Hết video: tự động chuyển sang video tiếp theo mượt mà
+                            playNextVideo()
+                        } else if (state == Player.STATE_READY) {
+                            hideThumbnailForCurrent()
+                        }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        updateOriginIslandState(isPlaying)
+                    }
+                })
+            }
+
+        startProgressLoop()
+    }
+
+    private fun loadInitialFeed() {
+        initProgress.visibility = View.VISIBLE
+        val localVideos = repository.loadInitialVideos()
+        if (localVideos.isNotEmpty()) {
+            videoList.addAll(localVideos)
+            adapter.notifyDataSetChanged()
+            initProgress.visibility = View.GONE
+            viewPager.post {
+                playVideoAt(0)
+            }
+        }
+
+        // Cào thêm video tươi mới từ TikTok ngầm
+        loadMoreOnlineVideos()
+    }
+
+    private fun loadMoreOnlineVideos() {
+        val keywords = listOf("nhacchill", "nhaytrend", "lofi", "remix")
+        val randomKw = keywords.random()
+        repository.fetchOnlineBatchAsync(randomKw) { freshItems ->
+            if (freshItems.isNotEmpty()) {
+                runOnUiThread {
+                    adapter.addItems(freshItems)
+                    initProgress.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private fun playVideoAt(position: Int) {
+        val player = exoPlayer ?: return
+        if (position !in videoList.indices) return
+
+        val item = videoList[position]
+
+        // Gắn ExoPlayer vào PlayerView của trang hiện tại
+        val recyclerView = viewPager.getChildAt(0) as? RecyclerView
+        val holder = recyclerView?.findViewHolderForAdapterPosition(position) as? TikTokVideoAdapter.VideoViewHolder
+        if (holder != null) {
+            holder.playerView.player = player
+            holder.ivThumbnail.visibility = View.VISIBLE
+            holder.ivCenterPlay.visibility = View.GONE
+        }
+
+        val mediaItem = MediaItem.fromUri(item.videoUrl)
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.playWhenReady = true
+
+        // Gửi thông tin sang Đảo Origin của Vivo OriginOS 6
+        updateOriginIslandState(true)
+    }
+
+    private fun hideThumbnailForCurrent() {
+        val recyclerView = viewPager.getChildAt(0) as? RecyclerView
+        val holder = recyclerView?.findViewHolderForAdapterPosition(currentPosition) as? TikTokVideoAdapter.VideoViewHolder
+        holder?.ivThumbnail?.visibility = View.GONE
+    }
+
+    private fun togglePlayPause() {
+        val player = exoPlayer ?: return
+        val willPlay = !player.isPlaying
+        player.playWhenReady = willPlay
+
+        val recyclerView = viewPager.getChildAt(0) as? RecyclerView
+        val holder = recyclerView?.findViewHolderForAdapterPosition(currentPosition) as? TikTokVideoAdapter.VideoViewHolder
+        if (holder != null) {
+            holder.ivCenterPlay.visibility = if (willPlay) View.GONE else View.VISIBLE
+        }
+        updateOriginIslandState(willPlay)
+    }
+
+    private fun resumeCurrentVideo() {
+        exoPlayer?.playWhenReady = true
+        updateOriginIslandState(true)
+    }
+
+    private fun pauseCurrentVideo() {
+        exoPlayer?.playWhenReady = false
+        updateOriginIslandState(false)
+    }
+
+    private fun playNextVideo() {
+        if (currentPosition < videoList.size - 1) {
+            viewPager.setCurrentItem(currentPosition + 1, true)
+        }
+    }
+
+    private fun playPreviousVideo() {
+        if (currentPosition > 0) {
+            viewPager.setCurrentItem(currentPosition - 1, true)
+        }
+    }
+
+    private fun updateOriginIslandState(isPlaying: Boolean) {
+        if (currentPosition !in videoList.indices) return
+        val item = videoList[currentPosition]
+        val curMs = exoPlayer?.currentPosition ?: 0L
+        val durMs = exoPlayer?.duration?.takeIf { it > 0 } ?: (item.durationSec * 1000L)
+
+        val intent = Intent(this, OriginMediaService::class.java).apply {
+            action = OriginMediaService.ACTION_UPDATE
+            putExtra("title", item.title.ifEmpty { "TikTok Music Clean" })
+            putExtra("artist", if (item.authorNickname.isNotEmpty()) "@${item.authorUsername} · ${item.authorNickname}" else "@${item.authorUsername}")
+            putExtra("coverUrl", item.coverUrl)
+            putExtra("isPlaying", isPlaying)
+            putExtra("posMs", curMs)
+            putExtra("durMs", durMs)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun startProgressLoop() {
+        progressHandler.post(object : Runnable {
+            override fun run() {
+                val player = exoPlayer
+                if (player != null && player.isPlaying) {
+                    val pos = player.currentPosition
+                    val dur = player.duration
+                    if (dur > 0) {
+                        val progress = ((pos * 100) / dur).toInt()
+                        val recyclerView = viewPager.getChildAt(0) as? RecyclerView
+                        val holder = recyclerView?.findViewHolderForAdapterPosition(currentPosition) as? TikTokVideoAdapter.VideoViewHolder
+                        holder?.pbTimeline?.progress = progress
+                    }
+                }
+                progressHandler.postDelayed(this, 300)
+            }
+        })
+    }
+
+    private fun initScreenReceiver() {
         try {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
@@ -115,249 +287,38 @@ class MainActivity : AppCompatActivity() {
             }
             registerReceiver(screenReceiver, filter)
         } catch (_: Exception) {}
-
-        val rootLayout = FrameLayout(this)
-        rootLayout.setBackgroundColor(Color.parseColor("#07080d"))
-
-        fullscreenContainer = FrameLayout(this).apply {
-            visibility = View.GONE
-            setBackgroundColor(Color.BLACK)
-        }
-
-        webView = KeepAliveWebView(this).apply {
-            setBackgroundColor(Color.parseColor("#07080d"))
-            isFocusable = true
-            isFocusableInTouchMode = true
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-        activeWebViewRef = WeakReference(webView)
-
-        rootLayout.addView(webView)
-        rootLayout.addView(fullscreenContainer)
-        setContentView(rootLayout)
-
-        setupWebView()
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (customView != null || isLandscapeLocked) {
-                    if (customView != null) {
-                        hideCustomView()
-                    }
-                    setLandscapeMode(false)
-                    webView.evaluateJavascript("window.exitLandscapeFullscreen && window.exitLandscapeFullscreen();", null)
-                } else if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    // Khi bấm Back ở màn hình đầu tiên: thu nhỏ ứng dụng xuống chạy ngầm (giống trình phát nhạc thực thụ) thay vì đóng hẳn!
-                    moveTaskToBack(true)
-                }
-            }
-        })
-
-        webView.loadUrl(ONLINE_URL)
     }
 
     private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    101
-                )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
             }
         }
-    }
-
-    private fun startOriginMediaService() {
-        try {
-            val serviceIntent = Intent(this, OriginMediaService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun setLandscapeMode(landscape: Boolean) {
-        runOnUiThread {
-            isLandscapeLocked = landscape
-            if (landscape) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                hideSystemUI()
-            } else {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                showSystemUI()
-            }
-        }
-    }
-
-    private fun hideSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            )
-        }
-    }
-
-    private fun showSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-        }
-    }
-
-    inner class AndroidBridge {
-        @JavascriptInterface
-        fun setLandscape(landscape: Boolean) {
-            setLandscapeMode(landscape)
-        }
-
-        @JavascriptInterface
-        fun updateMediaState(
-            title: String?,
-            artist: String?,
-            coverUrl: String?,
-            isPlaying: Boolean,
-            posMs: Long,
-            durMs: Long
-        ) {
-            try {
-                val intent = Intent(this@MainActivity, OriginMediaService::class.java).apply {
-                    action = OriginMediaService.ACTION_UPDATE
-                    putExtra("title", title ?: "TikTok Music Clean")
-                    putExtra("artist", artist ?: "@tiktok")
-                    putExtra("coverUrl", coverUrl ?: "")
-                    putExtra("isPlaying", isPlaying)
-                    putExtra("posMs", posMs)
-                    putExtra("durMs", durMs)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebView() {
-        val settings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.mediaPlaybackRequiresUserGesture = false
-        settings.loadWithOverviewMode = true
-        settings.useWideViewPort = true
-        settings.allowFileAccess = true
-        settings.allowContentAccess = true
-        settings.allowFileAccessFromFileURLs = true
-        settings.allowUniversalAccessFromFileURLs = true
-        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        settings.cacheMode = WebSettings.LOAD_DEFAULT
-
-        webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
-                if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:///")) {
-                    view?.loadUrl(url)
-                    return true
-                }
-                return false
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: android.webkit.WebResourceError?
-            ) {
-                super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame == true) {
-                    view?.loadUrl(OFFLINE_URL)
-                }
-            }
-        }
-
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                if (customView != null) {
-                    callback?.onCustomViewHidden()
-                    return
-                }
-                customView = view
-                customViewCallback = callback
-                fullscreenContainer.addView(view)
-                fullscreenContainer.visibility = View.VISIBLE
-                webView.visibility = View.GONE
-                setLandscapeMode(true)
-            }
-
-            override fun onHideCustomView() {
-                hideCustomView()
-            }
-        }
-    }
-
-    private fun hideCustomView() {
-        if (customView == null) return
-        fullscreenContainer.visibility = View.GONE
-        fullscreenContainer.removeView(customView)
-        customView = null
-        customViewCallback?.onCustomViewHidden()
-        customViewCallback = null
-        webView.visibility = View.VISIBLE
-        setLandscapeMode(false)
-        webView.evaluateJavascript("window.exitLandscapeFullscreen && window.exitLandscapeFullscreen();", null)
     }
 
     override fun onResume() {
         super.onResume()
-        webView.onResume()
-        webView.resumeTimers()
+        hideSystemUI()
+        exoPlayer?.playWhenReady = true
     }
 
     override fun onPause() {
         super.onPause()
-        // TUYỆT ĐỐI KHÔNG gọi webView.onPause() để nhạc & video vẫn tiếp tục phát ngầm và hiển thị trên Đảo Origin (OriginOS 6) khi thoát ra ngoài!
-        webView.resumeTimers()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        webView.resumeTimers()
+        // TUYỆT ĐỐI KHÔNG PAUSE PLAYER Ở ĐÂY: Giữ cho ExoPlayer tiếp tục giải mã âm thanh khi người dùng tắt màn hình!
     }
 
     override fun onDestroy() {
+        instance = null
+        progressHandler.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(screenReceiver)
         } catch (_: Exception) {}
+        exoPlayer?.release()
+        exoPlayer = null
         try {
             stopService(Intent(this, OriginMediaService::class.java))
         } catch (_: Exception) {}
-        webView.destroy()
         super.onDestroy()
     }
 }
