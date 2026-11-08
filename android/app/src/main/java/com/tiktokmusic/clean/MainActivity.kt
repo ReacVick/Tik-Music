@@ -14,14 +14,18 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -29,17 +33,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.chip.Chip
 
 class MainActivity : AppCompatActivity() {
 
@@ -64,20 +71,44 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: TikTokVideoAdapter
     private lateinit var repository: TikTokRepository
     private lateinit var initProgress: ProgressBar
+
+    // Top Bar UI
+    private lateinit var topBar: LinearLayout
     private lateinit var btnToggleAutoScroll: TextView
     private lateinit var btnSearch: ImageView
     private lateinit var tvTabFollowing: TextView
     private lateinit var tvTabForYou: TextView
+    private lateinit var indicatorFollowing: View
+    private lateinit var indicatorForYou: View
+
+    // Bottom Navigation Bar UI
+    private lateinit var navHome: View
+    private lateinit var navFriends: View
+    private lateinit var navCreate: View
+    private lateinit var navInbox: View
+    private lateinit var navProfile: View
+
+    // Search Overlay UI
+    private lateinit var layoutSearchOverlay: View
+    private lateinit var ivSearchBack: ImageView
+    private lateinit var etSearchInput: EditText
+    private lateinit var ivSearchClear: ImageView
+    private lateinit var btnSubmitSearch: TextView
+    private lateinit var scrollSearchSuggestions: View
+    private lateinit var listHotKeywords: LinearLayout
+    private lateinit var rvSearchResults: RecyclerView
 
     private lateinit var prefs: SharedPreferences
     private val videoList = mutableListOf<TikTokItem>()
+    private val searchResultsList = mutableListOf<TikTokItem>()
 
     private var exoPlayer: ExoPlayer? = null
     private var currentPosition: Int = 0
     private var isAutoScrollEnabled: Boolean = true
     private var isLoadingMore: Boolean = false
-    private var currentRegion: String = "VN"
+    private var currentTab: String = "FOR_YOU"
 
+    private var videoStartTime: Long = 0L
     private val progressHandler = Handler(Looper.getMainLooper())
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -96,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         // Tràn viền giao diện tối 120Hz mượt mà
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.parseColor("#0A0A0E")
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_main)
@@ -104,27 +135,73 @@ class MainActivity : AppCompatActivity() {
         prefs = getSharedPreferences("tiktok_clean_prefs", Context.MODE_PRIVATE)
         isAutoScrollEnabled = prefs.getBoolean("auto_scroll_enabled", true)
 
-        viewPager = findViewById(R.id.viewPager)
-        initProgress = findViewById(R.id.initProgress)
-        btnToggleAutoScroll = findViewById(R.id.btnToggleAutoScroll)
-        btnSearch = findViewById(R.id.btnSearch)
-        tvTabFollowing = findViewById(R.id.tvTabFollowing)
-        tvTabForYou = findViewById(R.id.tvTabForYou)
-
-        repository = TikTokRepository()
-
+        initViews()
+        setupWindowInsets()
         setupAutoScrollButton()
         setupTopTabs()
-        setupSearchButton()
+        setupBottomNav()
+        setupSearchOverlay()
         checkNotificationPermission()
+
+        repository = TikTokRepository()
         initExoPlayer()
         setupViewPager()
 
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenReceiver, filter)
 
-        // Nạp mẻ video trực tuyến đầu tiên ngay khi mở app
+        // Nạp nguồn video Việt Nam thịnh hành ngay khi mở app
         loadInitialFeed()
+    }
+
+    private fun initViews() {
+        viewPager = findViewById(R.id.viewPager)
+        initProgress = findViewById(R.id.initProgress)
+        topBar = findViewById(R.id.topBar)
+        btnToggleAutoScroll = findViewById(R.id.btnToggleAutoScroll)
+        btnSearch = findViewById(R.id.btnSearch)
+        tvTabFollowing = findViewById(R.id.tvTabFollowing)
+        tvTabForYou = findViewById(R.id.tvTabForYou)
+        indicatorFollowing = findViewById(R.id.indicatorFollowing)
+        indicatorForYou = findViewById(R.id.indicatorForYou)
+
+        navHome = findViewById(R.id.navHome)
+        navFriends = findViewById(R.id.navFriends)
+        navCreate = findViewById(R.id.navCreate)
+        navInbox = findViewById(R.id.navInbox)
+        navProfile = findViewById(R.id.navProfile)
+
+        layoutSearchOverlay = findViewById(R.id.layoutSearchOverlay)
+        ivSearchBack = findViewById(R.id.ivSearchBack)
+        etSearchInput = findViewById(R.id.etSearchInput)
+        ivSearchClear = findViewById(R.id.ivSearchClear)
+        btnSubmitSearch = findViewById(R.id.btnSubmitSearch)
+        scrollSearchSuggestions = findViewById(R.id.scrollSearchSuggestions)
+        listHotKeywords = findViewById(R.id.listHotKeywords)
+        rvSearchResults = findViewById(R.id.rvSearchResults)
+    }
+
+    private fun setupWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootContainer)) { _, insets ->
+            val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val navBarBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+
+            // Tự động căn lề theo tai thỏ/nốt ruồi Vivo OriginOS 6 mà không bị đè
+            topBar.setPadding(
+                topBar.paddingLeft,
+                statusBarTop + 8,
+                topBar.paddingRight,
+                topBar.paddingBottom
+            )
+            val searchTopBar = findViewById<LinearLayout>(R.id.searchTopBar)
+            searchTopBar.setPadding(
+                searchTopBar.paddingLeft,
+                statusBarTop + 8,
+                searchTopBar.paddingRight,
+                searchTopBar.paddingBottom
+            )
+            insets
+        }
     }
 
     private fun setupAutoScrollButton() {
@@ -134,9 +211,9 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("auto_scroll_enabled", isAutoScrollEnabled).apply()
             updateAutoScrollUI()
             val msg = if (isAutoScrollEnabled) {
-                "Đã BẬT tự động cuộn (hết video tự chuyển)"
+                "⚡ Đã BẬT tự động cuộn (hết video tự chuyển)"
             } else {
-                "Đã TẮT tự động cuộn (lặp lại video)"
+                "⚡ Đã TẮT tự động cuộn (lặp lại video)"
             }
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
@@ -155,92 +232,223 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupTopTabs() {
-        tvTabFollowing.setOnClickListener {
+        findViewById<View>(R.id.tabFollowingLayout).setOnClickListener {
+            currentTab = "FOLLOWING"
             tvTabFollowing.setTextColor(Color.WHITE)
-            tvTabForYou.setTextColor(Color.parseColor("#B3FFFFFF"))
-            currentRegion = "US"
-            refreshFeedWithRegion(currentRegion)
+            indicatorFollowing.visibility = View.VISIBLE
+            tvTabForYou.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorForYou.visibility = View.INVISIBLE
+            loadInitialFeed()
         }
-        tvTabForYou.setOnClickListener {
+
+        findViewById<View>(R.id.tabForYouLayout).setOnClickListener {
+            currentTab = "FOR_YOU"
             tvTabForYou.setTextColor(Color.WHITE)
-            tvTabFollowing.setTextColor(Color.parseColor("#B3FFFFFF"))
-            currentRegion = "VN"
-            refreshFeedWithRegion(currentRegion)
+            indicatorForYou.visibility = View.VISIBLE
+            tvTabFollowing.setTextColor(Color.parseColor("#88FFFFFF"))
+            indicatorFollowing.visibility = View.INVISIBLE
+            loadInitialFeed()
         }
     }
 
-    private fun setupSearchButton() {
-        btnSearch.setOnClickListener {
-            showSearchDialog()
+    private fun setupBottomNav() {
+        navHome.setOnClickListener {
+            viewPager.setCurrentItem(0, true)
+            loadInitialFeed()
+        }
+
+        navFriends.setOnClickListener {
+            Toast.makeText(this, "Bạn bè: Đang đồng bộ danh bạ", Toast.LENGTH_SHORT).show()
+        }
+
+        navCreate.setOnClickListener {
+            Toast.makeText(this, "Tính năng tạo video TikTok", Toast.LENGTH_SHORT).show()
+        }
+
+        navInbox.setOnClickListener {
+            Toast.makeText(this, "Hộp thư: Không có tin nhắn mới", Toast.LENGTH_SHORT).show()
+        }
+
+        navProfile.setOnClickListener {
+            showProfileBottomSheet()
         }
     }
 
-    private fun showSearchDialog() {
+    private fun showProfileBottomSheet() {
         val dialog = BottomSheetDialog(this)
-        val dialogView = layoutInflater.inflate(R.layout.dialog_search, null)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_video_options, null)
         dialog.setContentView(dialogView)
 
-        val etSearchQuery = dialogView.findViewById<EditText>(R.id.etSearchQuery)
-        val btnDoSearch = dialogView.findViewById<TextView>(R.id.btnDoSearch)
-        val chipTrend = dialogView.findViewById<Chip>(R.id.chipTrend)
-        val chipChill = dialogView.findViewById<Chip>(R.id.chipChill)
-        val chipRemix = dialogView.findViewById<Chip>(R.id.chipRemix)
-        val chipUS = dialogView.findViewById<Chip>(R.id.chipUS)
-        val chipKpop = dialogView.findViewById<Chip>(R.id.chipKpop)
+        val switchAutoScroll = dialogView.findViewById<SwitchCompat>(R.id.switchAutoScrollOption)
+        val btnViewAuthor = dialogView.findViewById<TextView>(R.id.btnOptionViewAuthor)
+        val btnCopyLink = dialogView.findViewById<TextView>(R.id.btnOptionCopyLink)
 
-        val executeSearch: (String) -> Unit = { query ->
+        dialogView.findViewById<TextView>(android.R.id.text1)?.text = "Cài đặt TikTok Clean"
+        btnViewAuthor.text = "📱 Trạng thái Đảo Origin: Đang liên kết com.luna.music"
+        btnCopyLink.text = "🗑️ Xóa bộ nhớ đệm video (Giải phóng RAM)"
+
+        switchAutoScroll.isChecked = isAutoScrollEnabled
+        switchAutoScroll.setOnCheckedChangeListener { _, isChecked ->
+            isAutoScrollEnabled = isChecked
+            prefs.edit().putBoolean("auto_scroll_enabled", isAutoScrollEnabled).apply()
+            updateAutoScrollUI()
+        }
+
+        btnCopyLink.setOnClickListener {
             dialog.dismiss()
-            initProgress.visibility = View.VISIBLE
-            repository.searchVideos(query) { results ->
-                runOnUiThread {
-                    initProgress.visibility = View.GONE
-                    if (results.isNotEmpty()) {
-                        videoList.clear()
-                        videoList.addAll(results)
-                        adapter.notifyDataSetChanged()
-                        viewPager.setCurrentItem(0, false)
-                        playVideoAt(0)
-                        Toast.makeText(this, "Tìm thấy ${results.size} video cho: $query", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "Không tìm thấy video nào phù hợp", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
+            Toast.makeText(this, "Đã dọn dẹp bộ nhớ đệm mượt mà!", Toast.LENGTH_SHORT).show()
         }
 
-        btnDoSearch.setOnClickListener {
-            val q = etSearchQuery.text.toString().trim()
-            if (q.isNotEmpty()) executeSearch(q)
+        dialog.show()
+    }
+
+    private fun setupSearchOverlay() {
+        btnSearch.setOnClickListener {
+            openSearchOverlay()
         }
 
-        etSearchQuery.setOnEditorActionListener { _, actionId, _ ->
+        ivSearchBack.setOnClickListener {
+            closeSearchOverlay()
+        }
+
+        ivSearchClear.setOnClickListener {
+            etSearchInput.text.clear()
+            showSearchSuggestions()
+        }
+
+        btnSubmitSearch.setOnClickListener {
+            val q = etSearchInput.text.toString().trim()
+            if (q.isNotEmpty()) performSearch(q)
+        }
+
+        etSearchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                val q = etSearchQuery.text.toString().trim()
-                if (q.isNotEmpty()) executeSearch(q)
+                val q = etSearchInput.text.toString().trim()
+                if (q.isNotEmpty()) performSearch(q)
                 true
             } else false
         }
 
-        chipTrend.setOnClickListener {
-            dialog.dismiss()
-            refreshFeedWithRegion("VN")
-        }
-        chipChill.setOnClickListener {
-            executeSearch("chill")
-        }
-        chipRemix.setOnClickListener {
-            executeSearch("remix")
-        }
-        chipUS.setOnClickListener {
-            dialog.dismiss()
-            refreshFeedWithRegion("US")
-        }
-        chipKpop.setOnClickListener {
-            dialog.dismiss()
-            refreshFeedWithRegion("KR")
-        }
+        etSearchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                ivSearchClear.visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
-        dialog.show()
+        populateHotKeywords()
+
+        // Cài đặt RecyclerView kết quả tìm kiếm (Grid 2 cột chuẩn TikTok)
+        rvSearchResults.layoutManager = GridLayoutManager(this, 2)
+        rvSearchResults.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+                val v = layoutInflater.inflate(R.layout.item_search_video_card, parent, false)
+                return object : RecyclerView.ViewHolder(v) {}
+            }
+
+            override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+                val item = searchResultsList[position]
+                val ivThumb = holder.itemView.findViewById<ImageView>(R.id.ivSearchCardThumb)
+                val tvTitle = holder.itemView.findViewById<TextView>(R.id.tvSearchCardTitle)
+                val ivAvatar = holder.itemView.findViewById<ImageView>(R.id.ivSearchCardAvatar)
+                val tvAuthor = holder.itemView.findViewById<TextView>(R.id.tvSearchCardAuthor)
+                val tvLikes = holder.itemView.findViewById<TextView>(R.id.tvSearchCardLikes)
+
+                tvTitle.text = item.title
+                tvAuthor.text = item.author
+                tvLikes.text = item.likeCount
+                ImageLoader.load(item.coverUrl, ivThumb, false)
+                ImageLoader.load(item.authorAvatar, ivAvatar, true)
+
+                holder.itemView.setOnClickListener {
+                    closeSearchOverlay()
+                    videoList.clear()
+                    videoList.addAll(searchResultsList)
+                    adapter.notifyDataSetChanged()
+                    viewPager.setCurrentItem(position, false)
+                    playVideoAt(position)
+                }
+            }
+
+            override fun getItemCount(): Int = searchResultsList.size
+        }
+    }
+
+    private fun openSearchOverlay() {
+        layoutSearchOverlay.visibility = View.VISIBLE
+        etSearchInput.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.showSoftInput(etSearchInput, InputMethodManager.SHOW_IMPLICIT)
+        showSearchSuggestions()
+    }
+
+    private fun closeSearchOverlay() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(etSearchInput.windowToken, 0)
+        layoutSearchOverlay.visibility = View.GONE
+    }
+
+    private fun showSearchSuggestions() {
+        scrollSearchSuggestions.visibility = View.VISIBLE
+        rvSearchResults.visibility = View.GONE
+    }
+
+    private fun populateHotKeywords() {
+        val hotList = listOf(
+            "🎵 Nhạc trẻ gây nghiện 2026",
+            "☕ Nhạc chill tâm trạng đêm khuya",
+            "🎧 Vinahouse EDM Remix cực bốc",
+            "🌟 Sơn Tùng M-TP V-Pop",
+            "💃 Biến hình TikTok Việt Nam",
+            "🍲 Review ẩm thực Sài Gòn & Hà Nội",
+            "😂 Hài hước giải trí triệu view"
+        )
+
+        listHotKeywords.removeAllViews()
+        hotList.forEachIndexed { idx, kw ->
+            val row = layoutInflater.inflate(R.layout.item_hot_keyword, listHotKeywords, false)
+            val tvRank = row.findViewById<TextView>(R.id.tvKeywordRank)
+            val tvText = row.findViewById<TextView>(R.id.tvKeywordText)
+            val tvTag = row.findViewById<TextView>(R.id.tvKeywordTag)
+
+            tvRank.text = (idx + 1).toString()
+            tvText.text = kw
+            if (idx >= 3) {
+                tvRank.setTextColor(Color.parseColor("#88FFFFFF"))
+                tvTag.visibility = View.GONE
+            }
+
+            row.setOnClickListener {
+                val cleanQuery = kw.substring(2).trim()
+                etSearchInput.setText(cleanQuery)
+                etSearchInput.setSelection(cleanQuery.length)
+                performSearch(cleanQuery)
+            }
+            listHotKeywords.addView(row)
+        }
+    }
+
+    private fun performSearch(query: String) {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(etSearchInput.windowToken, 0)
+
+        initProgress.visibility = View.VISIBLE
+        repository.searchVideos(query) { results ->
+            runOnUiThread {
+                initProgress.visibility = View.GONE
+                searchResultsList.clear()
+                searchResultsList.addAll(results)
+                rvSearchResults.adapter?.notifyDataSetChanged()
+
+                scrollSearchSuggestions.visibility = View.GONE
+                rvSearchResults.visibility = View.VISIBLE
+
+                if (results.isEmpty()) {
+                    Toast.makeText(this, "Không tìm thấy kết quả phù hợp", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun showAuthorProfileDialog(item: TikTokItem) {
@@ -344,7 +552,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadInitialFeed() {
         initProgress.visibility = View.VISIBLE
-        repository.fetchOnlineTrending(currentRegion, 20) { items ->
+        repository.fetchVietnameseFeed(20) { items ->
             runOnUiThread {
                 initProgress.visibility = View.GONE
                 if (items.isNotEmpty()) {
@@ -355,23 +563,7 @@ class MainActivity : AppCompatActivity() {
                         playVideoAt(0)
                     }
                 } else {
-                    Toast.makeText(this, "Đang kết nối lại máy chủ...", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun refreshFeedWithRegion(region: String) {
-        initProgress.visibility = View.VISIBLE
-        repository.fetchOnlineTrending(region, 20) { items ->
-            runOnUiThread {
-                initProgress.visibility = View.GONE
-                if (items.isNotEmpty()) {
-                    videoList.clear()
-                    videoList.addAll(items)
-                    adapter.notifyDataSetChanged()
-                    viewPager.setCurrentItem(0, false)
-                    playVideoAt(0)
+                    Toast.makeText(this, "Đang kết nối máy chủ...", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -381,7 +573,7 @@ class MainActivity : AppCompatActivity() {
         if (isLoadingMore) return
         isLoadingMore = true
 
-        repository.fetchOnlineTrending(currentRegion, 20) { moreItems ->
+        repository.fetchVietnameseFeed(20) { moreItems ->
             runOnUiThread {
                 isLoadingMore = false
                 if (moreItems.isNotEmpty()) {
@@ -394,38 +586,63 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initExoPlayer() {
-        exoPlayer = ExoPlayer.Builder(this).build().apply {
-            repeatMode = Player.REPEAT_MODE_OFF
+        // TỐI ƯU HÓA TỐC ĐỘ NẠP VIDEO CHUẨN TIKTOK (LoadControl cực nhanh: 250ms là phát ngay!)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                1000, // minBufferMs: 1.0s
+                8000, // maxBufferMs: 8.0s
+                250,  // bufferForPlaybackMs: 0.25s (Bắt đầu phát tức thì 0.25s!)
+                500   // bufferForPlaybackAfterRebufferMs: 0.5s
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
 
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    when (playbackState) {
-                        Player.STATE_READY -> {
-                            getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
-                            getCurrentViewHolder()?.ivCenterPlay?.visibility = View.GONE
-                            getCurrentViewHolder()?.discAnimator?.resume()
-                            syncWithOriginIsland(true)
-                        }
-                        Player.STATE_ENDED -> {
-                            if (isAutoScrollEnabled) {
-                                // TỰ ĐỘNG CUỘN SANG VIDEO TIẾP THEO
-                                playNextVideo()
-                            } else {
-                                // LẶP LẠI VIDEO HIỆN TẠI
-                                exoPlayer?.seekTo(0)
-                                exoPlayer?.play()
+        exoPlayer = ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
+                                getCurrentViewHolder()?.ivCenterPlay?.visibility = View.GONE
+                                getCurrentViewHolder()?.discAnimator?.resume()
+                                syncWithOriginIsland(true)
+                            }
+                            Player.STATE_ENDED -> {
+                                recordWatchInteraction()
+                                if (isAutoScrollEnabled) {
+                                    playNextVideo()
+                                } else {
+                                    exoPlayer?.seekTo(0)
+                                    exoPlayer?.play()
+                                }
                             }
                         }
                     }
-                }
 
-                override fun onPlayerError(error: PlaybackException) {
-                    // Nếu gặp video lỗi link CDN, tự động chuyển ngay sang bài tiếp theo sau 600ms
-                    viewPager.postDelayed({
-                        playNextVideo()
-                    }, 600)
-                }
-            })
+                    override fun onPlayerError(error: PlaybackException) {
+                        // Nếu gặp video lỗi link CDN, tự động chuyển ngay sang bài tiếp theo sau 500ms
+                        viewPager.postDelayed({
+                            playNextVideo()
+                        }, 500)
+                    }
+                })
+            }
+    }
+
+    private fun recordWatchInteraction() {
+        if (currentPosition in videoList.indices && videoStartTime > 0L) {
+            val watchedMs = System.currentTimeMillis() - videoStartTime
+            val duration = exoPlayer?.duration?.coerceAtLeast(1L) ?: 1000L
+            val ratio = (watchedMs.toFloat() / duration).coerceIn(0f, 1f)
+            val holder = getCurrentViewHolder()
+            val isLiked = holder?.isLiked == true
+            val isSaved = holder?.isSaved == true
+
+            repository.recordInteraction(videoList[currentPosition], ratio, isLiked, isSaved)
         }
     }
 
@@ -460,6 +677,7 @@ class MainActivity : AppCompatActivity() {
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+                recordWatchInteraction()
                 playVideoAt(position)
 
                 // CUỘN VÔ TẬN: Khi còn 4 video là đến đáy, tự động nạp tiếp 20 video mới
@@ -475,6 +693,7 @@ class MainActivity : AppCompatActivity() {
     private fun playVideoAt(position: Int) {
         if (position < 0 || position >= videoList.size) return
         currentPosition = position
+        videoStartTime = System.currentTimeMillis()
 
         val item = videoList[position]
         exoPlayer?.stop()

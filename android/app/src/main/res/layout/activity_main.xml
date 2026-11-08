@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
@@ -13,83 +14,239 @@
         android:layout_height="match_parent"
         android:orientation="vertical" />
 
-    <!-- 2. Thanh điều hướng trên cùng (Auto-Scroll | Tabs | Tìm kiếm) -->
-    <RelativeLayout
+    <!-- 2. Thanh điều hướng trên cùng (Auto-Scroll | Tabs | Kính lúp) -->
+    <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="36dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="4dp">
+        android:layout_gravity="top"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        android:paddingTop="38dp"
+        android:paddingBottom="6dp">
 
-        <!-- Nút Tự động cuộn (Bật / Tắt tức thì) -->
+        <!-- Nút Tự động cuộn (Bật / Tắt tức thì không đè chữ) -->
         <TextView
             android:id="@+id/btnToggleAutoScroll"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
+            android:layout_height="28dp"
             android:background="@drawable/bg_pill_autoscroll_on"
             android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:text="⚡ Tự cuộn: BẬT"
+            android:paddingHorizontal="8dp"
+            android:text="⚡ Tự cuộn"
             android:textColor="#00E676"
-            android:textSize="12sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <!-- Tabs ở giữa: Đang theo dõi | Dành cho bạn -->
         <LinearLayout
             android:id="@+id/tabsContainer"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_centerInParent="true"
-            android:gravity="center_vertical"
+            android:layout_weight="1"
+            android:gravity="center"
             android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/tvTabFollowing"
+            <LinearLayout
+                android:id="@+id/tabFollowingLayout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="Theo dõi"
-                android:textColor="#B3FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="|"
-                android:textColor="#33FFFFFF"
-                android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/tvTabFollowing"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Đang theo dõi"
+                    android:textColor="#88FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tvTabForYou"
+                <View
+                    android:id="@+id/indicatorFollowing"
+                    android:layout_width="24dp"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="4dp"
+                    android:background="#FFFFFF"
+                    android:visibility="invisible" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/tabForYouLayout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="4dp"
-                android:text="Dành cho bạn"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
+
+                <TextView
+                    android:id="@+id/tvTabForYou"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Dành cho bạn"
+                    android:textColor="#FFFFFF"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:id="@+id/indicatorForYou"
+                    android:layout_width="24dp"
+                    android:layout_height="2dp"
+                    android:layout_marginTop="4dp"
+                    android:background="#FFFFFF"
+                    android:visibility="visible" />
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- Nút Tìm kiếm kính lúp -->
+        <!-- Nút Kính lúp Tìm kiếm -->
         <ImageView
             android:id="@+id/btnSearch"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:padding="6dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:padding="5dp"
             android:src="@drawable/ic_search"
             android:contentDescription="Tìm kiếm video" />
 
-    </RelativeLayout>
+    </LinearLayout>
 
-    <!-- 3. Vòng tròn tải dữ liệu ban đầu -->
+    <!-- 3. Thanh điều hướng dưới cùng chuẩn TikTok Mobile (5 Tabs) -->
+    <LinearLayout
+        android:id="@+id/bottomNav"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom"
+        android:background="#000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- Tab 1: Trang chủ -->
+        <LinearLayout
+            android:id="@+id/navHome"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tiktok_home"
+                android:contentDescription="Trang chủ" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Trang chủ"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Tab 2: Bạn bè -->
+        <LinearLayout
+            android:id="@+id/navFriends"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tiktok_friends"
+                android:contentDescription="Bạn bè" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Bạn bè"
+                android:textColor="#88FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Tab 3: Tạo (+) -->
+        <LinearLayout
+            android:id="@+id/navCreate"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageView
+                android:layout_width="44dp"
+                android:layout_height="30dp"
+                android:src="@drawable/ic_tiktok_create"
+                android:contentDescription="Tạo video" />
+        </LinearLayout>
+
+        <!-- Tab 4: Hộp thư -->
+        <LinearLayout
+            android:id="@+id/navInbox"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tiktok_inbox"
+                android:contentDescription="Hộp thư" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Hộp thư"
+                android:textColor="#88FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Tab 5: Hồ sơ -->
+        <LinearLayout
+            android:id="@+id/navProfile"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_tiktok_profile"
+                android:contentDescription="Hồ sơ" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Hồ sơ"
+                android:textColor="#88FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Đường viền mỏng ngăn cách Bottom Nav -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.6dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="52dp"
+        android:background="#20FFFFFF" />
+
+    <!-- 4. Vòng tròn tải dữ liệu ban đầu -->
     <ProgressBar
         android:id="@+id/initProgress"
         style="?android:attr/progressBarStyleLarge"
@@ -97,5 +254,132 @@
         android:layout_height="48dp"
         android:layout_gravity="center"
         android:indeterminateTint="#FE2C55" />
+
+    <!-- 5. MÀN HÌNH TÌM KIẾM TOÀN MÀN HÌNH CHUẨN TIKTOK (Search Overlay) -->
+    <LinearLayout
+        android:id="@+id/layoutSearchOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#12131A"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- Top Search Bar -->
+        <LinearLayout
+            android:id="@+id/searchTopBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingTop="38dp"
+            android:paddingBottom="10dp">
+
+            <ImageView
+                android:id="@+id/ivSearchBack"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="4dp"
+                android:src="@drawable/ic_back_arrow"
+                android:contentDescription="Quay lại" />
+
+            <!-- Khung nhập tìm kiếm bo tròn -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_marginHorizontal="10dp"
+                android:layout_weight="1"
+                android:background="#222332"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="10dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_search"
+                    android:contentDescription="Search" />
+
+                <EditText
+                    android:id="@+id/etSearchInput"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="Tìm kiếm trên TikTok..."
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#66FFFFFF"
+                    android:textSize="14sp" />
+
+                <ImageView
+                    android:id="@+id/ivSearchClear"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:padding="2dp"
+                    android:src="@drawable/ic_clear"
+                    android:visibility="gone"
+                    android:contentDescription="Xóa" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnSubmitSearch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="8dp"
+                android:text="Tìm"
+                android:textColor="#FE2C55"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- Thẻ gợi ý từ khóa thịnh hành -->
+        <ScrollView
+            android:id="@+id/scrollSearchSuggestions"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔥 Tìm kiếm thịnh hành Việt Nam"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/listHotKeywords"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical" />
+
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Danh sách kết quả tìm kiếm (Grid 2 cột TikTok) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSearchResults"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="6dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
 </FrameLayout>

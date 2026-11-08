@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 1. Bộ giải mã video Google ExoPlayer / Media3 (Pure Native, 0% WebView) -->
+    <!-- 1. Bộ giải mã video Google ExoPlayer (Media3 SurfaceView) -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
@@ -14,7 +14,7 @@
         app:resize_mode="zoom"
         app:surface_type="surface_view" />
 
-    <!-- 2. Ảnh bìa Thumbnail hiển thị tức thì 0.01s trong lúc đệm video -->
+    <!-- 2. Ảnh bìa Thumbnail hiển thị tức thì trong lúc nạp video -->
     <ImageView
         android:id="@+id/ivThumbnail"
         android:layout_width="match_parent"
@@ -22,10 +22,10 @@
         android:scaleType="centerCrop"
         android:contentDescription="Video Thumbnail" />
 
-    <!-- 3. Lớp phủ đen chuyển màu phía dưới giúp chữ sắc nét -->
+    <!-- 3. Lớp gradient mờ phía dưới giúp phụ đề sắc nét -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="280dp"
+        android:layout_height="320dp"
         android:layout_gravity="bottom"
         android:background="@drawable/bg_bottom_scrim" />
 
@@ -39,22 +39,22 @@
         android:visibility="gone"
         android:contentDescription="Play/Pause" />
 
-    <!-- 5. Cột công cụ góc phải (Avatar, Tim, Lưu, Chia sẻ, Đĩa than xoay) -->
+    <!-- 5. Cột công cụ góc phải chuẩn TikTok Mobile (Avatar, Tim, Bình luận, Lưu, Chia sẻ, Đĩa than) -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="end|bottom"
         android:layout_marginEnd="12dp"
-        android:layout_marginBottom="80dp"
+        android:layout_marginBottom="68dp"
         android:gravity="center_horizontal"
         android:orientation="vertical">
 
-        <!-- Avatar tác giả + Dấu cộng đỏ -->
+        <!-- Avatar tác giả + Dấu cộng đỏ (+) -->
         <FrameLayout
             android:id="@+id/btnAuthorAvatar"
             android:layout_width="54dp"
             android:layout_height="58dp"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="14dp">
 
             <ImageView
                 android:id="@+id/ivAvatar"
@@ -83,7 +83,7 @@
             android:id="@+id/btnLike"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="12dp"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
@@ -105,19 +105,46 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Nút Bình luận (Comment) -->
+        <LinearLayout
+            android:id="@+id/btnComment"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:id="@+id/ivCommentIcon"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/ic_tiktok_comment"
+                android:contentDescription="Comment" />
+
+            <TextView
+                android:id="@+id/tvCommentCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="1.2K"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
         <!-- Nút Lưu (Bookmark) -->
         <LinearLayout
             android:id="@+id/btnSave"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="12dp"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
             <ImageView
                 android:id="@+id/ivSaveIcon"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:src="@drawable/ic_bookmark"
                 android:contentDescription="Save" />
 
@@ -137,13 +164,13 @@
             android:id="@+id/btnShare"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="18dp"
             android:gravity="center_horizontal"
             android:orientation="vertical">
 
             <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:src="@drawable/ic_share"
                 android:contentDescription="Share" />
 
@@ -158,23 +185,23 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Đĩa than xoay tròn phát nhạc đặc trưng của TikTok -->
+        <!-- Đĩa than xoay tròn phát nhạc -->
         <FrameLayout
             android:id="@+id/discContainer"
-            android:layout_width="48dp"
-            android:layout_height="48dp">
+            android:layout_width="46dp"
+            android:layout_height="46dp">
 
             <ImageView
                 android:id="@+id/ivVinylDisc"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
                 android:src="@drawable/bg_vinyl_disc"
                 android:contentDescription="Music Disc" />
 
             <ImageView
                 android:id="@+id/ivDiscCover"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
                 android:layout_gravity="center"
                 android:background="@drawable/bg_avatar_circle"
                 android:scaleType="centerCrop"
@@ -188,16 +215,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginStart="16dp"
+        android:layout_marginStart="14dp"
         android:layout_marginEnd="80dp"
-        android:layout_marginBottom="28dp"
+        android:layout_marginBottom="62dp"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/tvAuthorName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="\@tiktok_music"
+            android:text="\@tiktok_vietnam"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
@@ -210,10 +237,10 @@
             android:id="@+id/tvCaption"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:maxLines="3"
-            android:text="Âm nhạc thư giãn mỗi ngày · #nhacchill #lofi #remix"
+            android:text="Âm nhạc thư giãn mỗi ngày · #nhacchill #vpop #remix"
             android:textColor="#EEFFFFFF"
             android:textSize="14sp"
             android:lineSpacingExtra="2dp"
@@ -225,13 +252,13 @@
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="15dp"
+                android:layout_height="15dp"
                 android:src="@drawable/ic_music_note"
                 android:contentDescription="Music note" />
 
@@ -254,13 +281,14 @@
 
     </LinearLayout>
 
-    <!-- 7. Vạch timeline mỏng chạy dưới cùng màn hình -->
+    <!-- 7. Vạch timeline mỏng chạy dưới cùng ngay trên Bottom Nav Bar -->
     <ProgressBar
         android:id="@+id/pbTimeline"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="2dp"
         android:layout_gravity="bottom"
+        android:layout_marginBottom="52.6dp"
         android:progress="0"
         android:max="100"
         android:progressTint="#80FFFFFF"

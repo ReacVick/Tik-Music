@@ -10,6 +10,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.RecyclerView
 
@@ -33,6 +34,9 @@ class TikTokVideoAdapter(
         val btnLike: View = itemView.findViewById(R.id.btnLike)
         val ivLikeHeart: ImageView = itemView.findViewById(R.id.ivLikeHeart)
         val tvLikeCount: TextView = itemView.findViewById(R.id.tvLikeCount)
+
+        val btnComment: View = itemView.findViewById(R.id.btnComment)
+        val tvCommentCount: TextView = itemView.findViewById(R.id.tvCommentCount)
 
         val btnSave: View = itemView.findViewById(R.id.btnSave)
         val ivSaveIcon: ImageView = itemView.findViewById(R.id.ivSaveIcon)
@@ -70,8 +74,9 @@ class TikTokVideoAdapter(
         holder.tvMusicTitle.isSelected = true
 
         holder.tvLikeCount.text = item.likeCount
-        holder.tvShareCount.text = item.shareCount
+        holder.tvCommentCount.text = item.commentCount
         holder.tvSaveCount.text = item.commentCount
+        holder.tvShareCount.text = item.shareCount
 
         holder.ivCenterPlay.visibility = View.GONE
         holder.ivThumbnail.visibility = View.VISIBLE
@@ -102,6 +107,7 @@ class TikTokVideoAdapter(
             holder.isFollowed = !holder.isFollowed
             if (holder.isFollowed) {
                 holder.tvFollowPlus.visibility = View.GONE
+                Toast.makeText(holder.itemView.context, "Đã theo dõi ${item.author}", Toast.LENGTH_SHORT).show()
             } else {
                 holder.tvFollowPlus.visibility = View.VISIBLE
             }
@@ -120,11 +126,17 @@ class TikTokVideoAdapter(
             }
         }
 
+        // Tương tác bấm vào Comment
+        holder.btnComment.setOnClickListener {
+            Toast.makeText(holder.itemView.context, "Bình luận: ${item.commentCount} lượt thảo luận", Toast.LENGTH_SHORT).show()
+        }
+
         // Tương tác lưu bookmark
         holder.btnSave.setOnClickListener {
             holder.isSaved = !holder.isSaved
             if (holder.isSaved) {
                 holder.ivSaveIcon.setColorFilter(Color.parseColor("#FACE15"))
+                Toast.makeText(holder.itemView.context, "Đã thêm vào mục Yêu thích", Toast.LENGTH_SHORT).show()
             } else {
                 holder.ivSaveIcon.clearColorFilter()
             }

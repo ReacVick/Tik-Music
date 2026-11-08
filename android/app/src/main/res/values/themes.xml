@@ -1,7 +1,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.TikTokMusic" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:statusBarColor">#07080d</item>
-        <item name="android:navigationBarColor">#07080d</item>
-        <item name="android:windowBackground">#07080d</item>
+    <style name="Theme.TikTokMusic" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">#0A0A0E</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="colorPrimary">#FE2C55</item>
+        <item name="colorSecondary">#25F4EE</item>
+        <item name="colorSurface">#12131A</item>
     </style>
 </resources>
