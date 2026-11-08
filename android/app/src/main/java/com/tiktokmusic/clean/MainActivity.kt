@@ -133,6 +133,10 @@ class MainActivity : AppCompatActivity() {
     // SỬA LỖI 1: Cờ phân biệt người dùng tự bấm dừng thủ công
     private var isManuallyPaused: Boolean = false
 
+    // SỬA LỖI 2: Quản lý trình chiếu ảnh (Photo Mode Slideshow) chống mất hình
+    private var photoSlideRunnable: Runnable? = null
+    private var currentSlideIndex: Int = 0
+
     private var videoStartTime: Long = 0L
     private val progressHandler = Handler(Looper.getMainLooper())
 
@@ -713,13 +717,27 @@ class MainActivity : AppCompatActivity() {
                 repeatMode = Player.REPEAT_MODE_OFF
 
                 addListener(object : Player.Listener {
+                    override fun onRenderedFirstFrame() {
+                        // CHỈ ẨN THUMBNAIL KHI KHUNG HÌNH VIDEO THỰC SỰ ĐƯỢC GIẢI MÃ VÀ HIỂN THỊ!
+                        // ĐỐI VỚI BÀI ĐĂNG ALBUM ẢNH / AUDIO ONLY: THUMBNAIL KHÔNG BỊ ẨN -> TRIỆT TIÊU LỖI MẤT HÌNH
+                        val curPos = this@MainActivity.currentPosition
+                        if (curPos in videoList.indices && !videoList[curPos].isPhotoPost) {
+                            getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
+                        }
+                    }
+
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         when (playbackState) {
                             Player.STATE_READY -> {
-                                getCurrentViewHolder()?.ivThumbnail?.visibility = View.GONE
                                 getCurrentViewHolder()?.ivCenterPlay?.visibility = View.GONE
                                 getCurrentViewHolder()?.discAnimator?.resume()
                                 syncWithOriginIsland(true)
+
+                                // Nếu là bài đăng ảnh hoặc âm thanh thuần, giữ thumbnail luôn hiển thị sắc nét
+                                val curPos = this@MainActivity.currentPosition
+                                if (curPos in videoList.indices && videoList[curPos].isPhotoPost) {
+                                    getCurrentViewHolder()?.ivThumbnail?.visibility = View.VISIBLE
+                                }
                             }
                             Player.STATE_ENDED -> {
                                 recordWatchInteraction()
@@ -804,6 +822,10 @@ class MainActivity : AppCompatActivity() {
         videoStartTime = System.currentTimeMillis()
         isManuallyPaused = false
 
+        // Dừng trình chiếu ảnh của video trước (nếu có)
+        photoSlideRunnable?.let { progressHandler.removeCallbacks(it) }
+        currentSlideIndex = 0
+
         val item = videoList[position]
         exoPlayer?.stop()
         exoPlayer?.clearMediaItems()
@@ -812,8 +834,27 @@ class MainActivity : AppCompatActivity() {
             val holder = getCurrentViewHolder()
             if (holder != null) {
                 PlayerView.switchTargetView(exoPlayer!!, null, holder.playerView)
+                // Luôn hiển thị thumbnail ảnh bìa trước khi phát để không bị đen màn hình
                 holder.ivThumbnail.visibility = View.VISIBLE
                 holder.ivCenterPlay.visibility = View.GONE
+                ImageLoader.load(item.coverUrl, holder.ivThumbnail, false)
+
+                // Hỗ trợ chế độ Photo Mode (Tự động lướt các ảnh trong album theo nhạc nền)
+                if (item.images.size > 1) {
+                    photoSlideRunnable = object : Runnable {
+                        override fun run() {
+                            if (currentPosition == position && item.images.size > 1) {
+                                currentSlideIndex = (currentSlideIndex + 1) % item.images.size
+                                val nextImg = item.images[currentSlideIndex]
+                                getCurrentViewHolder()?.let { h ->
+                                    ImageLoader.load(nextImg, h.ivThumbnail, false)
+                                }
+                                progressHandler.postDelayed(this, 3500)
+                            }
+                        }
+                    }
+                    progressHandler.postDelayed(photoSlideRunnable!!, 3500)
+                }
             }
 
             val mediaItem = MediaItem.fromUri(item.videoUrl)
@@ -931,6 +972,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        photoSlideRunnable?.let { progressHandler.removeCallbacks(it) }
         progressHandler.removeCallbacksAndMessages(null)
         try {
             unregisterReceiver(screenReceiver)

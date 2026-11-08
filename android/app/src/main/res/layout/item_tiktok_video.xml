@@ -5,14 +5,14 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 1. Bộ giải mã video Google ExoPlayer (Media3 SurfaceView) -->
+    <!-- 1. Bộ giải mã video Google ExoPlayer (Media3 TextureView chuẩn ViewPager2 chống mất hình) -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:use_controller="false"
         app:resize_mode="zoom"
-        app:surface_type="surface_view" />
+        app:surface_type="texture_view" />
 
     <!-- 2. Ảnh bìa Thumbnail hiển thị tức thì trong lúc nạp video -->
     <ImageView

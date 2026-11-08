@@ -67,7 +67,21 @@ class TikTokRepository {
 
                                     val musicObj = item.optJSONObject("music_info")
                                     val soundTitle = musicObj?.optString("title") ?: "♫ Âm thanh gốc"
-                                    val cover = item.optString("cover")
+                                    var cover = item.optString("cover")
+
+                                    // Trích xuất danh sách ảnh (nếu là bài đăng Photo Mode/Album ảnh)
+                                    val imagesArray = item.optJSONArray("images")
+                                    val imagesList = mutableListOf<String>()
+                                    if (imagesArray != null) {
+                                        for (j in 0 until imagesArray.length()) {
+                                            val img = imagesArray.optString(j)
+                                            if (img.isNotBlank()) imagesList.add(img)
+                                        }
+                                    }
+                                    if (cover.isBlank() && imagesList.isNotEmpty()) {
+                                        cover = imagesList[0]
+                                    }
+                                    val isPhoto = imagesList.isNotEmpty() || playUrl.contains("audio_mpeg") || playUrl.contains("music")
 
                                     // LỌC THUẬT TOÁN: Ưu tiên tuyệt đối video Việt Nam
                                     if (isVietnameseContent(item, title, author, soundTitle)) {
@@ -88,7 +102,9 @@ class TikTokRepository {
                                             coverUrl = cover,
                                             likeCount = diggCount,
                                             commentCount = commentCount,
-                                            shareCount = shareCount
+                                            shareCount = shareCount,
+                                            isPhotoPost = isPhoto,
+                                            images = imagesList
                                         )
 
                                         collectedVnItems.add(tiktokItem)
@@ -177,6 +193,20 @@ class TikTokRepository {
                                     val avatar = authorObj?.optString("avatar") ?: ""
                                     val musicObj = obj.optJSONObject("music_info")
                                     val soundTitle = musicObj?.optString("title") ?: "♫ Âm thanh gốc"
+                                    var cover = obj.optString("cover")
+
+                                    val imagesArray = obj.optJSONArray("images")
+                                    val imagesList = mutableListOf<String>()
+                                    if (imagesArray != null) {
+                                        for (j in 0 until imagesArray.length()) {
+                                            val img = imagesArray.optString(j)
+                                            if (img.isNotBlank()) imagesList.add(img)
+                                        }
+                                    }
+                                    if (cover.isBlank() && imagesList.isNotEmpty()) {
+                                        cover = imagesList[0]
+                                    }
+                                    val isPhoto = imagesList.isNotEmpty() || playUrl.contains("audio_mpeg") || playUrl.contains("music")
 
                                     seenVideoIds.add(id)
                                     val newItem = TikTokItem(
@@ -187,10 +217,12 @@ class TikTokRepository {
                                         authorUniqueId = uniqueId,
                                         authorAvatar = avatar,
                                         soundTitle = soundTitle,
-                                        coverUrl = obj.optString("cover"),
+                                        coverUrl = cover,
                                         likeCount = formatCount(obj.optInt("digg_count", 18200)),
                                         commentCount = formatCount(obj.optInt("comment_count", 950)),
-                                        shareCount = formatCount(obj.optInt("share_count", 3200))
+                                        shareCount = formatCount(obj.optInt("share_count", 3200)),
+                                        isPhotoPost = isPhoto,
+                                        images = imagesList
                                     )
                                     allLoadedVideos.add(newItem)
 
