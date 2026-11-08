@@ -3,80 +3,58 @@ package com.tiktokmusic.clean
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Collections
 import java.util.concurrent.Executors
 
 class TikTokRepository {
 
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = Executors.newFixedThreadPool(2)
+    private val seenVideoIds = Collections.synchronizedSet(mutableSetOf<String>())
+    private val allLoadedVideos = Collections.synchronizedList(mutableListOf<TikTokItem>())
 
-    // Danh sách 10 bản nhạc chill TikTok thịnh hành khởi động tức thì 0.01s
-    private val starterTracks = listOf(
-        TikTokItem(
-            id = "start_1",
-            videoUrl = "https://www.tikwm.com/video/media/play/7361730040939220230.mp4",
-            title = "Em Là Hoàng Hôn (Chill Lofi Remix) - Nhạc Chill TikTok Cực Cuốn 🌆✨",
-            author = "@nhacchill_tiktok",
-            authorAvatar = "https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7311188371306381318~c5_100x100.jpeg",
-            soundTitle = "♫ Em Là Hoàng Hôn - Lofi Chill Remix",
-            coverUrl = "https://p16-sign-va.tiktokcdn.com/tos-maliva-p-0068/o4fDGBnL9fM4BQA6IEc7IAy4iAE3eQAvAALFGA~tplv-photomode-zoomcover:480:480.jpeg",
-            likeCount = "128.5K",
-            commentCount = "2.4K",
-            shareCount = "19.2K"
-        ),
-        TikTokItem(
-            id = "start_2",
-            videoUrl = "https://www.tikwm.com/video/media/play/7361730040939220231.mp4",
-            title = "Ngày Đẹp Trời Để Biến Mất - Giai điệu chữa lành tâm hồn những ngày mệt mỏi 🍃🌧️",
-            author = "@goc_chill_moi_ngay",
-            authorAvatar = "https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7311188371306381318~c5_100x100.jpeg",
-            soundTitle = "♫ Ngày Đẹp Trời Để Biến Mất - Acoustic",
-            coverUrl = "https://p16-sign-va.tiktokcdn.com/tos-maliva-p-0068/o4fDGBnL9fM4BQA6IEc7IAy4iAE3eQAvAALFGA~tplv-photomode-zoomcover:480:480.jpeg",
-            likeCount = "95.2K",
-            commentCount = "1.8K",
-            shareCount = "14.1K"
-        ),
-        TikTokItem(
-            id = "start_3",
-            videoUrl = "https://www.tikwm.com/video/media/play/7361730040939220232.mp4",
-            title = "Dạ Vũ (Slowed + Reverb) - Điệu valse giữa đêm muộn ngắm mưa rơi 🌙✨",
-            author = "@nhac_tam_trang",
-            authorAvatar = "https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/7311188371306381318~c5_100x100.jpeg",
-            soundTitle = "♫ Dạ Vũ (Slowed Reverb) - Tăng Duy Tân",
-            coverUrl = "https://p16-sign-va.tiktokcdn.com/tos-maliva-p-0068/o4fDGBnL9fM4BQA6IEc7IAy4iAE3eQAvAALFGA~tplv-photomode-zoomcover:480:480.jpeg",
-            likeCount = "210.8K",
-            commentCount = "4.5K",
-            shareCount = "38.6K"
-        )
-    )
+    // Danh sách các vùng hỗ trợ nạp video phong phú
+    val availableRegions = listOf("VN", "US", "KR", "JP", "TH", "ID")
 
-    fun getInitialVideos(): List<TikTokItem> {
-        return starterTracks
-    }
-
-    fun fetchOnlineTrending(onResult: (List<TikTokItem>) -> Unit) {
+    /**
+     * Nạp batch video thịnh hành từ TikWM API
+     * Mỗi lần gọi trả về 10-20 video mới nhất, tự động lọc trùng lặp
+     */
+    fun fetchOnlineTrending(
+        region: String = "VN",
+        count: Int = 20,
+        onResult: (List<TikTokItem>) -> Unit
+    ) {
         executor.execute {
             val list = mutableListOf<TikTokItem>()
             try {
-                val url = URL("https://www.tikwm.com/api/feed/list?region=VN&count=20")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-                conn.setRequestProperty("User-Agent", "TikTokClean/2.0")
+                val apiUrl = "https://www.tikwm.com/api/feed/list?region=$region&count=$count"
+                val conn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 7000
+                    readTimeout = 7000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; V2318A) Mobile Safari/537.36")
+                    setRequestProperty("Accept", "application/json")
+                }
 
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = JSONObject(jsonStr)
+
                 if (root.optInt("code") == 0) {
                     val data = root.optJSONArray("data")
                     if (data != null) {
                         for (i in 0 until data.length()) {
                             val item = data.getJSONObject(i)
                             val playUrl = item.optString("play")
-                            if (playUrl.isNotBlank()) {
-                                val id = item.optString("video_id", "vid_$i")
-                                val title = item.optString("title", "TikTok Music Clean")
+                            val id = item.optString("video_id", "vid_${System.currentTimeMillis()}_$i")
+
+                            if (playUrl.isNotBlank() && !seenVideoIds.contains(id)) {
+                                seenVideoIds.add(id)
+
+                                val title = item.optString("title", "TikTok Video").trim()
                                 val authorObj = item.optJSONObject("author")
                                 val author = authorObj?.optString("nickname") ?: "@tiktok"
+                                val uniqueId = authorObj?.optString("unique_id") ?: ""
                                 val avatar = authorObj?.optString("avatar") ?: ""
+
                                 val musicObj = item.optJSONObject("music_info")
                                 val soundTitle = musicObj?.optString("title") ?: "♫ Âm thanh gốc"
                                 val cover = item.optString("cover")
@@ -85,27 +63,79 @@ class TikTokRepository {
                                 val commentCount = formatCount(item.optInt("comment_count", 890))
                                 val shareCount = formatCount(item.optInt("share_count", 4500))
 
-                                list.add(
-                                    TikTokItem(
-                                        id = id,
-                                        videoUrl = playUrl,
-                                        title = title,
-                                        author = author,
-                                        authorAvatar = avatar,
-                                        soundTitle = soundTitle,
-                                        coverUrl = cover,
-                                        likeCount = diggCount,
-                                        commentCount = commentCount,
-                                        shareCount = shareCount
-                                    )
+                                val tiktokItem = TikTokItem(
+                                    id = id,
+                                    videoUrl = playUrl,
+                                    title = if (title.isNotEmpty()) title else "Bản nhạc thịnh hành TikTok",
+                                    author = if (author.startsWith("@")) author else "@$author",
+                                    authorUniqueId = uniqueId,
+                                    authorAvatar = avatar,
+                                    soundTitle = soundTitle,
+                                    coverUrl = cover,
+                                    likeCount = diggCount,
+                                    commentCount = commentCount,
+                                    shareCount = shareCount
                                 )
+                                list.add(tiktokItem)
+                                allLoadedVideos.add(tiktokItem)
                             }
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
             onResult(list)
+        }
+    }
+
+    /**
+     * Tìm kiếm video theo từ khóa trong kho video đã tải và nạp thêm từ nhiều vùng
+     */
+    fun searchVideos(
+        query: String,
+        onResult: (List<TikTokItem>) -> Unit
+    ) {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) {
+            onResult(allLoadedVideos.toList())
+            return
+        }
+
+        // Lọc trong kho hiện tại trước
+        val localMatches = allLoadedVideos.filter {
+            it.title.lowercase().contains(q) ||
+            it.author.lowercase().contains(q) ||
+            it.soundTitle.lowercase().contains(q) ||
+            it.authorUniqueId.lowercase().contains(q)
+        }.toMutableList()
+
+        if (localMatches.size >= 5) {
+            onResult(localMatches)
+            return
+        }
+
+        // Nếu kho chưa đủ kết quả, thử tải thêm từ khu vực US/VN và lọc
+        fetchOnlineTrending(region = "US", count = 20) { newItems ->
+            val additionalMatches = newItems.filter {
+                it.title.lowercase().contains(q) ||
+                it.author.lowercase().contains(q) ||
+                it.soundTitle.lowercase().contains(q)
+            }
+            localMatches.addAll(additionalMatches)
+            onResult(localMatches)
+        }
+    }
+
+    /**
+     * Lấy danh sách video của một tác giả cụ thể
+     */
+    fun getVideosByAuthor(authorUniqueId: String, authorNickname: String): List<TikTokItem> {
+        return allLoadedVideos.filter {
+            (authorUniqueId.isNotEmpty() && it.authorUniqueId.equals(authorUniqueId, ignoreCase = true)) ||
+            it.author.equals(authorNickname, ignoreCase = true) ||
+            it.author.equals("@$authorNickname", ignoreCase = true)
         }
     }
 

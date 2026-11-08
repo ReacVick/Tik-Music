@@ -124,25 +124,19 @@ class OriginMediaService : Service() {
                 )
                 setCallback(object : MediaSession.Callback() {
                     override fun onPlay() {
-                        currentIsPlaying = true
-                        updatePlaybackState(PlaybackState.STATE_PLAYING)
-                        refreshNotification(cachedBitmap ?: defaultArtwork)
+                        MainActivity.dispatchMediaAction("play")
                     }
 
                     override fun onPause() {
-                        currentIsPlaying = false
-                        updatePlaybackState(PlaybackState.STATE_PAUSED)
-                        refreshNotification(cachedBitmap ?: defaultArtwork)
+                        MainActivity.dispatchMediaAction("pause")
                     }
 
                     override fun onSkipToNext() {
-                        updatePlaybackState(PlaybackState.STATE_PLAYING)
-                        refreshNotification(cachedBitmap ?: defaultArtwork)
+                        MainActivity.dispatchMediaAction("next")
                     }
 
                     override fun onSkipToPrevious() {
-                        updatePlaybackState(PlaybackState.STATE_PLAYING)
-                        refreshNotification(cachedBitmap ?: defaultArtwork)
+                        MainActivity.dispatchMediaAction("prev")
                     }
                 })
                 isActive = true
@@ -190,17 +184,11 @@ class OriginMediaService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_PLAY -> mediaSession?.controller?.transportControls?.play()
-            ACTION_PAUSE -> mediaSession?.controller?.transportControls?.pause()
-            ACTION_TOGGLE -> {
-                if (currentIsPlaying) {
-                    mediaSession?.controller?.transportControls?.pause()
-                } else {
-                    mediaSession?.controller?.transportControls?.play()
-                }
-            }
-            ACTION_NEXT -> mediaSession?.controller?.transportControls?.skipToNext()
-            ACTION_PREV -> mediaSession?.controller?.transportControls?.skipToPrevious()
+            ACTION_PLAY -> MainActivity.dispatchMediaAction("play")
+            ACTION_PAUSE -> MainActivity.dispatchMediaAction("pause")
+            ACTION_TOGGLE -> MainActivity.dispatchMediaAction("toggle")
+            ACTION_NEXT -> MainActivity.dispatchMediaAction("next")
+            ACTION_PREV -> MainActivity.dispatchMediaAction("prev")
             else -> syncSession()
         }
         return START_STICKY

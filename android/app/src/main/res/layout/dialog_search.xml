@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_sheet_rounded"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <!-- Thanh kéo trên cùng -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="#33FFFFFF" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Tìm kiếm TikTok"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <!-- Khung nhập từ khóa tìm kiếm -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:layout_marginTop="14dp"
+        android:background="#222336"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_search"
+            android:contentDescription="Search Icon" />
+
+        <EditText
+            android:id="@+id/etSearchQuery"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:background="@null"
+            android:hint="Tìm bài hát, ca sĩ, chủ đề..."
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:singleLine="true"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#66FFFFFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/btnDoSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp"
+            android:text="Tìm"
+            android:textColor="#FE2C55"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Chủ đề gợi ý phổ biến -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Gợi ý thịnh hành:"
+        android:textColor="#88FFFFFF"
+        android:textSize="12sp" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chipGroupTopics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipTrend"
+            style="@style/Widget.Material3.Chip.Suggestion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥 Xu hướng Việt Nam"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipChill"
+            style="@style/Widget.Material3.Chip.Suggestion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="☕ Nhạc Chill Lofi"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipRemix"
+            style="@style/Widget.Material3.Chip.Suggestion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎧 EDM Remix"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipUS"
+            style="@style/Widget.Material3.Chip.Suggestion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🇺🇸 Billboard Hot"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipKpop"
+            style="@style/Widget.Material3.Chip.Suggestion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🇰🇷 K-Pop Dance"
+            android:textColor="#FFFFFF" />
+
+    </com.google.android.material.chip.ChipGroup>
+
+</LinearLayout>

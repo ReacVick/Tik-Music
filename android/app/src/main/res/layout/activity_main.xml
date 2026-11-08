@@ -1,159 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A0A0C"
-    android:fillViewport="true">
+    android:background="#000000"
+    android:keepScreenOn="true">
 
-    <LinearLayout
+    <!-- 1. ViewPager2 lướt dọc Native TikTok 120Hz Snap to Page -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical" />
+
+    <!-- 2. Thanh điều hướng trên cùng (Auto-Scroll | Tabs | Tìm kiếm) -->
+    <RelativeLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp"
-        android:paddingTop="48dp">
+        android:layout_marginTop="36dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp">
 
-        <!-- Tiêu đề Header -->
+        <!-- Nút Tự động cuộn (Bật / Tắt tức thì) -->
         <TextView
+            android:id="@+id/btnToggleAutoScroll"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Trợ Lý Đảo Origin"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
+            android:layout_height="32dp"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:background="@drawable/bg_pill_autoscroll_on"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:text="⚡ Tự cuộn: BẬT"
+            android:textColor="#00E676"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
-        <TextView
+        <!-- Tabs ở giữa: Đang theo dõi | Dành cho bạn -->
+        <LinearLayout
+            android:id="@+id/tabsContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Tích hợp Đảo Origin (Origin Island) trên Vivo OriginOS 6"
-            android:textColor="#888888"
-            android:textSize="14sp" />
+            android:layout_centerInParent="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <!-- Card 1: Công tắc Kích hoạt Đảo Origin -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            app:cardBackgroundColor="#16161A"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tvTabFollowing"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="20dp">
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="Theo dõi"
+                android:textColor="#B3FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvIslandStatus"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Đảo Origin: ĐANG TẮT"
-                        android:textColor="#FF4444"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="Bật để hiển thị viên thuốc động quanh camera"
-                        android:textColor="#888888"
-                        android:textSize="13sp" />
-                </LinearLayout>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchIsland"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="false" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card 2: Nút Mở Nhanh TikTok Mod -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#16161A"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
+                android:text="|"
+                android:textColor="#33FFFFFF"
+                android:textSize="12sp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ứng Dụng TikTok Của Bạn"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Sử dụng bản TikTok Mod 424MB để có đầy đủ: Tìm kiếm, xem kênh, lướt vô tận &amp; đăng nhập tài khoản."
-                    android:textColor="#888888"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btnOpenTikTok"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="16dp"
-                    android:backgroundTint="#FE2C55"
-                    android:text="MỞ TIKTOK NGAY"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Card 3: Hướng dẫn Nghe Tắt Màn Hình & Tự Động Cuộn -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#16161A"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tvTabForYou"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="Dành cho bạn"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="💡 Mẹo Dùng Trên Vivo OriginOS 6"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+        <!-- Nút Tìm kiếm kính lúp -->
+        <ImageView
+            android:id="@+id/btnSearch"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:padding="6dp"
+            android:src="@drawable/ic_search"
+            android:contentDescription="Tìm kiếm video" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="4dp"
-                    android:text="1. Tự động cuộn video:\nTrong app TikTok, NHẤN GIỮ TAY VÀO GIỮA VIDEO 1 GIÂY > chọn 'Tự động cuộn'. TikTok sẽ tự động nhảy video liên tục.\n\n2. Tắt màn hình vẫn phát nhạc:\nVuốt từ mép màn hình vào để mở Smart Sidebar (Thanh bên thông minh) > chọn 'Phát âm thanh khi tắt màn hình'. Màn hình tắt đen nhưng âm thanh TikTok vẫn phát qua loa/tai nghe!"
-                    android:textColor="#BBBBBB"
-                    android:textSize="13sp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+    </RelativeLayout>
 
-    </LinearLayout>
-</ScrollView>
+    <!-- 3. Vòng tròn tải dữ liệu ban đầu -->
+    <ProgressBar
+        android:id="@+id/initProgress"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="#FE2C55" />
+
+</FrameLayout>

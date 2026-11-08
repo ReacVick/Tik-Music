@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="120dp"
+    android:layout_height="200dp"
+    android:layout_marginEnd="10dp"
+    android:background="#1F202D">
+
+    <ImageView
+        android:id="@+id/ivAuthorThumb"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="Video Thumbnail" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_bottom_scrim" />
+
+    <TextView
+        android:id="@+id/tvAuthorVideoTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_margin="8dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Video title"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp" />
+
+</FrameLayout>

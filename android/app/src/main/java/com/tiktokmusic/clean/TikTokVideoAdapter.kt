@@ -15,7 +15,10 @@ import androidx.recyclerview.widget.RecyclerView
 
 class TikTokVideoAdapter(
     private val items: MutableList<TikTokItem>,
-    private val onVideoClick: (position: Int, isPlaying: Boolean) -> Unit
+    private val onVideoClick: (position: Int, isPlaying: Boolean) -> Unit,
+    private val onAuthorClick: (item: TikTokItem) -> Unit,
+    private val onLongClick: (item: TikTokItem) -> Unit,
+    private val onShareClick: (item: TikTokItem) -> Unit
 ) : RecyclerView.Adapter<TikTokVideoAdapter.VideoViewHolder>() {
 
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -23,7 +26,10 @@ class TikTokVideoAdapter(
         val ivThumbnail: ImageView = itemView.findViewById(R.id.ivThumbnail)
         val ivCenterPlay: ImageView = itemView.findViewById(R.id.ivCenterPlay)
 
+        val btnAuthorAvatar: View = itemView.findViewById(R.id.btnAuthorAvatar)
         val ivAvatar: ImageView = itemView.findViewById(R.id.ivAvatar)
+        val tvFollowPlus: TextView = itemView.findViewById(R.id.tvFollowPlus)
+
         val btnLike: View = itemView.findViewById(R.id.btnLike)
         val ivLikeHeart: ImageView = itemView.findViewById(R.id.ivLikeHeart)
         val tvLikeCount: TextView = itemView.findViewById(R.id.tvLikeCount)
@@ -32,6 +38,7 @@ class TikTokVideoAdapter(
         val ivSaveIcon: ImageView = itemView.findViewById(R.id.ivSaveIcon)
         val tvSaveCount: TextView = itemView.findViewById(R.id.tvSaveCount)
 
+        val btnShare: View = itemView.findViewById(R.id.btnShare)
         val tvShareCount: TextView = itemView.findViewById(R.id.tvShareCount)
 
         val discContainer: FrameLayout = itemView.findViewById(R.id.discContainer)
@@ -45,6 +52,7 @@ class TikTokVideoAdapter(
         var discAnimator: ObjectAnimator? = null
         var isLiked: Boolean = false
         var isSaved: Boolean = false
+        var isFollowed: Boolean = false
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
@@ -72,7 +80,7 @@ class TikTokVideoAdapter(
         ImageLoader.load(item.authorAvatar, holder.ivAvatar, true)
         ImageLoader.load(item.coverUrl, holder.ivDiscCover, true)
 
-        // Hoạt họa đĩa than xoay 360 độ
+        // Hoạt họa đĩa than xoay tròn 360 độ
         holder.discAnimator?.cancel()
         holder.discAnimator = ObjectAnimator.ofFloat(holder.discContainer, "rotation", 0f, 360f).apply {
             duration = 7000
@@ -81,7 +89,25 @@ class TikTokVideoAdapter(
             start()
         }
 
-        // Tương tác thả tim
+        // Tương tác bấm vào Avatar hoặc Tên Tác giả -> Mở xem thông tin kênh
+        holder.btnAuthorAvatar.setOnClickListener {
+            onAuthorClick(item)
+        }
+        holder.tvAuthorName.setOnClickListener {
+            onAuthorClick(item)
+        }
+
+        // Tương tác nút Follow (+)
+        holder.tvFollowPlus.setOnClickListener {
+            holder.isFollowed = !holder.isFollowed
+            if (holder.isFollowed) {
+                holder.tvFollowPlus.visibility = View.GONE
+            } else {
+                holder.tvFollowPlus.visibility = View.VISIBLE
+            }
+        }
+
+        // Tương tác thả tim (Like)
         holder.btnLike.setOnClickListener {
             holder.isLiked = !holder.isLiked
             if (holder.isLiked) {
@@ -104,6 +130,11 @@ class TikTokVideoAdapter(
             }
         }
 
+        // Tương tác chia sẻ
+        holder.btnShare.setOnClickListener {
+            onShareClick(item)
+        }
+
         // Chạm vào màn hình để Tạm dừng / Phát tiếp
         holder.itemView.setOnClickListener {
             val isCurrentlyPlaying = holder.ivCenterPlay.visibility != View.VISIBLE
@@ -116,6 +147,12 @@ class TikTokVideoAdapter(
                 holder.discAnimator?.resume()
                 onVideoClick(position, true)
             }
+        }
+
+        // Nhấn giữ màn hình (Long Click) để mở menu Tùy chọn (Tự cuộn, v.v.)
+        holder.itemView.setOnLongClickListener {
+            onLongClick(item)
+            true
         }
     }
 
