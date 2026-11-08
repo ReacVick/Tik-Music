@@ -12,9 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Shader
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
@@ -30,7 +28,7 @@ import java.util.concurrent.Executors
 class OriginMediaService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "tiktok_music_origin_island_channel"
+        const val CHANNEL_ID = "tiktok_clean_origin_channel"
         const val NOTIFICATION_ID = 2026
         const val ACTION_UPDATE = "com.luna.music.ACTION_UPDATE"
         const val ACTION_PLAY = "com.luna.music.ACTION_PLAY"
@@ -40,21 +38,41 @@ class OriginMediaService : Service() {
         const val ACTION_PREV = "com.luna.music.ACTION_PREV"
 
         @Volatile
-        private var currentTitle: String = "TikTok Music Clean"
+        private var currentTitle: String = "TikTok Clean"
         @Volatile
-        private var currentArtist: String = "@nhacchill · TikTok Music"
+        private var currentArtist: String = "@tiktok · Đang phát"
         @Volatile
         private var currentCoverUrl: String = ""
         @Volatile
         private var currentIsPlaying: Boolean = true
         @Volatile
-        private var currentPosMs: Long = 0L
-        @Volatile
-        private var currentDurMs: Long = 180000L
-        @Volatile
         private var cachedCoverUrl: String = ""
         @Volatile
         private var cachedBitmap: Bitmap? = null
+
+        fun updateTrack(
+            context: Context,
+            title: String,
+            artist: String,
+            coverUrl: String = "",
+            isPlaying: Boolean = true
+        ) {
+            currentTitle = if (title.isNotBlank()) title else "TikTok Video"
+            currentArtist = if (artist.isNotBlank()) artist else "@tiktok"
+            currentCoverUrl = coverUrl
+            currentIsPlaying = isPlaying
+
+            val intent = Intent(context, OriginMediaService::class.java).apply {
+                action = ACTION_UPDATE
+            }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private var mediaSession: MediaSession? = null
@@ -74,12 +92,12 @@ class OriginMediaService : Service() {
     private fun initLocks() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TikTokMusic::OriginBgWakeLock").apply {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TikTokClean::OriginBgWakeLock").apply {
                 setReferenceCounted(false)
             }
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             @Suppress("DEPRECATION")
-            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TikTokMusic::OriginWifiLock").apply {
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TikTokClean::OriginWifiLock").apply {
                 setReferenceCounted(false)
             }
         } catch (_: Exception) {}
@@ -98,204 +116,171 @@ class OriginMediaService : Service() {
     }
 
     private fun initMediaSession() {
-        mediaSession = MediaSession(this, "TikTokMusicOriginIsland").apply {
-            setCallback(object : MediaSession.Callback() {
-                override fun onPlay() {
-                    currentIsPlaying = true
-                    MainActivity.dispatchMediaAction("play")
-                    publishMediaStateAndNotification()
-                }
-
-                override fun onPause() {
-                    currentIsPlaying = false
-                    MainActivity.dispatchMediaAction("pause")
-                    publishMediaStateAndNotification()
-                }
-
-                override fun onSkipToNext() {
-                    currentIsPlaying = true
-                    MainActivity.dispatchMediaAction("next")
-                }
-
-                override fun onSkipToPrevious() {
-                    currentIsPlaying = true
-                    MainActivity.dispatchMediaAction("prev")
-                }
-
-                override fun onSeekTo(pos: Long) {
-                    currentPosMs = pos
-                    MainActivity.dispatchMediaAction("seek", (pos / 1000.0).toString())
-                    publishMediaStateAndNotification()
-                }
-            })
-            @Suppress("DEPRECATION")
-            setFlags(
-                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
+        try {
+            mediaSession = MediaSession(this, "TikTokCleanMediaSession").apply {
+                setFlags(
+                    MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
                     MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
-            )
-            isActive = true
-        }
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_PLAY -> {
-                currentIsPlaying = true
-                MainActivity.dispatchMediaAction("play")
-                publishMediaStateAndNotification()
-            }
-            ACTION_PAUSE -> {
-                currentIsPlaying = false
-                MainActivity.dispatchMediaAction("pause")
-                publishMediaStateAndNotification()
-            }
-            ACTION_TOGGLE -> {
-                currentIsPlaying = !currentIsPlaying
-                MainActivity.dispatchMediaAction("toggle")
-                publishMediaStateAndNotification()
-            }
-            ACTION_NEXT -> {
-                currentIsPlaying = true
-                MainActivity.dispatchMediaAction("next")
-            }
-            ACTION_PREV -> {
-                currentIsPlaying = true
-                MainActivity.dispatchMediaAction("prev")
-            }
-            ACTION_UPDATE -> {
-                currentTitle = intent.getStringExtra("title") ?: currentTitle
-                currentArtist = intent.getStringExtra("artist") ?: currentArtist
-                val newCover = intent.getStringExtra("coverUrl") ?: ""
-                currentIsPlaying = intent.getBooleanExtra("isPlaying", currentIsPlaying)
-                currentPosMs = intent.getLongExtra("posMs", currentPosMs)
-                val dur = intent.getLongExtra("durMs", currentDurMs)
-                if (dur > 0) currentDurMs = dur
-
-                if (newCover.isNotEmpty() && newCover != cachedCoverUrl) {
-                    currentCoverUrl = newCover
-                    fetchCoverBitmapAsync(newCover)
-                }
-                publishMediaStateAndNotification()
-            }
-            else -> {
-                publishMediaStateAndNotification()
-            }
-        }
-        return START_STICKY
-    }
-
-    private fun fetchCoverBitmapAsync(urlStr: String) {
-        imageExecutor.execute {
-            try {
-                val url = URL(urlStr)
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 5000
-                    readTimeout = 5000
-                    doInput = true
-                    setRequestProperty("User-Agent", "Mozilla/5.0")
-                }
-                conn.connect()
-                conn.inputStream.use { input ->
-                    val raw = BitmapFactory.decodeStream(input)
-                    if (raw != null) {
-                        val scaled = Bitmap.createScaledBitmap(raw, 384, 384, true)
-                        cachedCoverUrl = urlStr
-                        cachedBitmap = scaled
-                        publishMediaStateAndNotification()
+                )
+                setCallback(object : MediaSession.Callback() {
+                    override fun onPlay() {
+                        MainActivity.dispatchMediaAction("play")
+                        currentIsPlaying = true
+                        updatePlaybackState(PlaybackState.STATE_PLAYING)
+                        refreshNotification(cachedBitmap ?: defaultArtwork)
                     }
-                }
-            } catch (_: Exception) {}
-        }
+
+                    override fun onPause() {
+                        MainActivity.dispatchMediaAction("pause")
+                        currentIsPlaying = false
+                        updatePlaybackState(PlaybackState.STATE_PAUSED)
+                        refreshNotification(cachedBitmap ?: defaultArtwork)
+                    }
+
+                    override fun onSkipToNext() {
+                        MainActivity.dispatchMediaAction("next")
+                    }
+
+                    override fun onSkipToPrevious() {
+                        MainActivity.dispatchMediaAction("prev")
+                    }
+                })
+                isActive = true
+            }
+            updatePlaybackState(PlaybackState.STATE_PLAYING)
+        } catch (_: Exception) {}
     }
 
-    private fun publishMediaStateAndNotification() {
-        val session = mediaSession ?: return
-        acquireLocks(currentIsPlaying)
-
-        val art = cachedBitmap ?: defaultArtwork
-
-        val metadataBuilder = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, "TikTok Music Clean")
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, if (currentDurMs > 0) currentDurMs else 180000L)
-
-        if (art != null) {
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art)
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, art)
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art)
-        }
-        session.setMetadata(metadataBuilder.build())
-
-        val stateCode = if (currentIsPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
-        val speed = if (currentIsPlaying) 1.0f else 0.0f
-        val actions = (
-            PlaybackState.ACTION_PLAY or
+    private fun updatePlaybackState(state: Int) {
+        val actions = PlaybackState.ACTION_PLAY or
                 PlaybackState.ACTION_PAUSE or
                 PlaybackState.ACTION_PLAY_PAUSE or
                 PlaybackState.ACTION_SKIP_TO_NEXT or
                 PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackState.ACTION_SEEK_TO or
                 PlaybackState.ACTION_STOP
+
+        val stateBuilder = PlaybackState.Builder()
+            .setActions(actions)
+            .setState(
+                state,
+                0L,
+                if (state == PlaybackState.STATE_PLAYING) 1.0f else 0.0f,
+                SystemClock.elapsedRealtime()
             )
 
-        val pbState = PlaybackState.Builder()
-            .setActions(actions)
-            .setState(stateCode, currentPosMs, speed, SystemClock.elapsedRealtime())
-            .build()
+        mediaSession?.setPlaybackState(stateBuilder.build())
+        acquireLocks(state == PlaybackState.STATE_PLAYING)
+    }
 
-        session.setPlaybackState(pbState)
-        session.isActive = true
+    private fun updateMediaMetadata(artBitmap: Bitmap?) {
+        val metadataBuilder = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, currentArtist)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, "TikTok Clean")
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, 180000L)
 
-        val notification = buildMediaNotification(session, art)
+        artBitmap?.let {
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, it)
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, it)
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, it)
+        }
+
+        mediaSession?.setMetadata(metadataBuilder.build())
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_PLAY -> mediaSession?.controller?.transportControls?.play()
+            ACTION_PAUSE -> mediaSession?.controller?.transportControls?.pause()
+            ACTION_TOGGLE -> {
+                if (currentIsPlaying) {
+                    mediaSession?.controller?.transportControls?.pause()
+                } else {
+                    mediaSession?.controller?.transportControls?.play()
+                }
+            }
+            ACTION_NEXT -> mediaSession?.controller?.transportControls?.skipToNext()
+            ACTION_PREV -> mediaSession?.controller?.transportControls?.skipToPrevious()
+            else -> syncSession()
+        }
+        return START_STICKY
+    }
+
+    private fun syncSession() {
+        val targetState = if (currentIsPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
+        updatePlaybackState(targetState)
+
+        val coverUrl = currentCoverUrl
+        if (coverUrl.isNotBlank() && coverUrl == cachedCoverUrl && cachedBitmap != null) {
+            updateMediaMetadata(cachedBitmap)
+            refreshNotification(cachedBitmap)
+            return
+        }
+
+        updateMediaMetadata(defaultArtwork)
+        refreshNotification(defaultArtwork)
+
+        if (coverUrl.isNotBlank()) {
+            imageExecutor.execute {
+                val downloaded = downloadBitmap(coverUrl)
+                if (downloaded != null) {
+                    cachedCoverUrl = coverUrl
+                    cachedBitmap = downloaded
+                    updateMediaMetadata(downloaded)
+                    refreshNotification(downloaded)
+                }
+            }
+        }
+    }
+
+    private fun refreshNotification(artwork: Bitmap?) {
+        val notif = buildMediaNotification(artwork ?: defaultArtwork)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
-                    notification,
+                    notif,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
             } else {
-                startForeground(NOTIFICATION_ID, notification)
+                startForeground(NOTIFICATION_ID, notif)
             }
-        } catch (_: Exception) {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(NOTIFICATION_ID, notification)
-        }
+        } catch (_: Exception) {}
     }
 
-    private fun buildMediaNotification(session: MediaSession, art: Bitmap?): Notification {
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val contentPendingIntent = PendingIntent.getActivity(
+    private fun buildMediaNotification(artwork: Bitmap?): Notification {
+        val contentIntent = PendingIntent.getActivity(
             this,
             0,
-            openAppIntent,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val prevAction = Notification.Action.Builder(
-            android.R.drawable.ic_media_previous,
-            "Trước",
-            createServicePendingIntent(ACTION_PREV, 1)
-        ).build()
+        val prevIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, OriginMediaService::class.java).apply { action = ACTION_PREV },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val playPauseAction = Notification.Action.Builder(
-            if (currentIsPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-            if (currentIsPlaying) "Tạm dừng" else "Phát",
-            createServicePendingIntent(if (currentIsPlaying) ACTION_PAUSE else ACTION_PLAY, 2)
-        ).build()
+        val toggleIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, OriginMediaService::class.java).apply { action = ACTION_TOGGLE },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val nextAction = Notification.Action.Builder(
-            android.R.drawable.ic_media_next,
-            "Tiếp theo",
-            createServicePendingIntent(ACTION_NEXT, 3)
-        ).build()
+        val nextIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, OriginMediaService::class.java).apply { action = ACTION_NEXT },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val mediaStyle = Notification.MediaStyle()
-            .setMediaSession(session.sessionToken)
-            .setShowActionsInCompactView(0, 1, 2)
+        val playPauseIcon = if (currentIsPlaying) {
+            android.R.drawable.ic_media_pause
+        } else {
+            android.R.drawable.ic_media_play
+        }
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
@@ -304,43 +289,80 @@ class OriginMediaService : Service() {
             Notification.Builder(this)
         }
 
-        builder
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(currentTitle)
+        builder.setContentTitle(currentTitle)
             .setContentText(currentArtist)
-            .setSubText("TikTok Music Clean")
-            .setLargeIcon(art)
-            .setContentIntent(contentPendingIntent)
+            .setSubText("TikTok Clean")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(contentIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setCategory(Notification.CATEGORY_TRANSPORT)
             .setOngoing(currentIsPlaying)
-            .setShowWhen(false)
-            .setStyle(mediaStyle)
-            .addAction(prevAction)
-            .addAction(playPauseAction)
-            .addAction(nextAction)
+
+        artwork?.let { builder.setLargeIcon(it) }
+
+        builder.addAction(
+            Notification.Action.Builder(
+                android.R.drawable.ic_media_previous,
+                "Trước",
+                prevIntent
+            ).build()
+        )
+        builder.addAction(
+            Notification.Action.Builder(
+                playPauseIcon,
+                if (currentIsPlaying) "Tạm dừng" else "Phát",
+                toggleIntent
+            ).build()
+        )
+        builder.addAction(
+            Notification.Action.Builder(
+                android.R.drawable.ic_media_next,
+                "Tiếp theo",
+                nextIntent
+            ).build()
+        )
+
+        mediaSession?.sessionToken?.let { token ->
+            val style = Notification.MediaStyle()
+                .setMediaSession(token)
+                .setShowActionsInCompactView(0, 1, 2)
+            builder.style = style
+        }
 
         return builder.build()
     }
 
-    private fun createServicePendingIntent(action: String, requestCode: Int): PendingIntent {
-        val intent = Intent(this, OriginMediaService::class.java).apply {
-            this.action = action
+    private fun createDefaultAlbumArt(): Bitmap {
+        val size = 256
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.parseColor("#121212"))
+
+        val discPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#222222")
+            style = Paint.Style.FILL
         }
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PendingIntent.getForegroundService(
-                this,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        } else {
-            PendingIntent.getService(
-                this,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+        canvas.drawCircle(size / 2f, size / 2f, size * 0.42f, discPaint)
+
+        val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FE2C55")
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size * 0.16f, centerPaint)
+        return bmp
+    }
+
+    private fun downloadBitmap(urlString: String): Bitmap? {
+        return try {
+            val url = URL(urlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 4000
+            conn.readTimeout = 4000
+            conn.instanceFollowRedirects = true
+            conn.inputStream.use { input ->
+                BitmapFactory.decodeStream(input)
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -348,51 +370,24 @@ class OriginMediaService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Trình phát Đảo Origin (TikTok Music)",
+                "TikTok Clean Origin Island",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Hiển thị điều khiển nhạc trên Đảo Origin (OriginOS 6) và chạy ngầm khi thoát ứng dụng"
+                description = "Hiển thị Đảo Origin và phát âm thanh khi tắt màn hình"
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
         }
-    }
-
-    private fun createDefaultAlbumArt(): Bitmap {
-        val size = 320
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.shader = LinearGradient(
-            0f, 0f, size.toFloat(), size.toFloat(),
-            intArrayOf(Color.parseColor("#181824"), Color.parseColor("#fe2c55"), Color.parseColor("#25f4ee")),
-            null,
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
-
-        val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#12121a")
-        }
-        canvas.drawCircle(size / 2f, size / 2f, size * 0.34f, circlePaint)
-
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = 110f
-            textAlign = Paint.Align.CENTER
-        }
-        canvas.drawText("♪", size / 2f, size / 2f + 38f, textPaint)
-        return bmp
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        acquireLocks(false)
-        mediaSession?.isActive = false
-        mediaSession?.release()
         super.onDestroy()
+        acquireLocks(false)
+        mediaSession?.release()
+        imageExecutor.shutdown()
     }
 }

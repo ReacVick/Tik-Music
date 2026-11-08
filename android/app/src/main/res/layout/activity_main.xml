@@ -1,59 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#07080D">
+    android:background="#000000"
+    android:keepScreenOn="true">
 
-    <!-- Vuốt dọc 120Hz Native chuẩn TikTok -->
-    <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/viewPager"
+    <WebView
+        android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical" />
+        android:background="#000000"
+        android:scrollbars="none"
+        android:overScrollMode="never" />
 
-    <!-- Thanh Top Bar chuẩn TikTok (Đang theo dõi | Dành cho bạn) -->
-    <LinearLayout
-        android:id="@+id/topBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:paddingTop="36dp"
-        android:paddingBottom="12dp">
-
-        <TextView
-            android:id="@+id/tabFollowing"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Đang theo dõi"
-            android:textColor="#A0FFFFFF"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="4dp" />
-
-        <TextView
-            android:id="@+id/tabForYou"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Dành cho bạn"
-            android:textColor="#FFFFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:paddingHorizontal="16dp"
-            android:paddingVertical="4dp" />
-    </LinearLayout>
-
-    <!-- Vạch chỉ báo đang tải video ban đầu -->
     <ProgressBar
         android:id="@+id/initProgress"
-        style="?android:attr/progressBarStyle"
+        style="?android:attr/progressBarStyleLarge"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_gravity="center"
-        android:visibility="gone" />
+        android:indeterminateTint="#FE2C55" />
 
 </FrameLayout>
